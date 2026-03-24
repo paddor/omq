@@ -34,6 +34,11 @@ module OMQ
       tcp_keepalive_count     tcp_keepalive_count=
       tcp_keepalive_interval  tcp_keepalive_interval=
       max_message_size        max_message_size=
+      mechanism              mechanism=
+      curve_server           curve_server=
+      curve_server_key       curve_server_key=
+      curve_public_key       curve_public_key=
+      curve_secret_key       curve_secret_key=
     ].each do |method|
       define_method(method) { |*args| @options.public_send(method, *args) }
     end

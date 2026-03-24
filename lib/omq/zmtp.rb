@@ -21,6 +21,10 @@ require_relative "zmtp/transport/inproc"
 require_relative "zmtp/transport/tcp"
 require_relative "zmtp/transport/ipc"
 
+# Mechanisms
+require_relative "zmtp/mechanism"
+require_relative "zmtp/mechanism/null"
+
 # Core
 require_relative "zmtp/reactor"
 require_relative "zmtp/options"

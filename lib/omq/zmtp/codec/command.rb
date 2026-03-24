@@ -147,31 +147,7 @@ module OMQ
         # @raise [ProtocolError] on malformed properties
         #
         def properties
-          result = {}
-          buf = IO::Buffer.for(@data)
-          offset = 0
-
-          while offset < @data.bytesize
-            raise ProtocolError, "property name truncated" if offset + 1 > @data.bytesize
-            name_len = buf.get_value(:U8, offset)
-            offset += 1
-
-            raise ProtocolError, "property name truncated" if offset + name_len > @data.bytesize
-            name = buf.get_string(offset, name_len, Encoding::BINARY)
-            offset += name_len
-
-            raise ProtocolError, "property value length truncated" if offset + 4 > @data.bytesize
-            value_len = buf.get_value(:U32, offset) # big-endian
-            offset += 4
-
-            raise ProtocolError, "property value truncated" if offset + value_len > @data.bytesize
-            value = buf.get_string(offset, value_len, Encoding::BINARY)
-            offset += value_len
-
-            result[name] = value
-          end
-
-          result
+          self.class.decode_properties(@data)
         end
 
         # Encodes a hash of properties into ZMTP property list format.
@@ -192,7 +168,39 @@ module OMQ
           end
           parts.join
         end
-        private_class_method :encode_properties
+        # Decodes a ZMTP property list from binary data.
+        #
+        # @param data [String] binary property list
+        # @return [Hash<String, String>] property name => value
+        # @raise [ProtocolError] on malformed properties
+        #
+        def self.decode_properties(data)
+          result = {}
+          buf    = IO::Buffer.for(data)
+          offset = 0
+
+          while offset < data.bytesize
+            raise ProtocolError, "property name truncated" if offset + 1 > data.bytesize
+            name_len = buf.get_value(:U8, offset)
+            offset += 1
+
+            raise ProtocolError, "property name truncated" if offset + name_len > data.bytesize
+            name = buf.get_string(offset, name_len, Encoding::BINARY)
+            offset += name_len
+
+            raise ProtocolError, "property value length truncated" if offset + 4 > data.bytesize
+            value_len = buf.get_value(:U32, offset)
+            offset += 4
+
+            raise ProtocolError, "property value truncated" if offset + value_len > data.bytesize
+            value = buf.get_string(offset, value_len, Encoding::BINARY)
+            offset += value_len
+
+            result[name] = value
+          end
+
+          result
+        end
       end
     end
   end

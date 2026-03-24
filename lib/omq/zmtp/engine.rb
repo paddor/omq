@@ -250,6 +250,7 @@ module OMQ
           socket_type:       @socket_type.to_s,
           identity:          @options.identity,
           as_server:         as_server,
+          mechanism:          build_mechanism,
           heartbeat_interval: @options.heartbeat_interval,
           heartbeat_ttl:      @options.heartbeat_ttl,
           heartbeat_timeout:  @options.heartbeat_timeout,
@@ -291,6 +292,25 @@ module OMQ
         end
       end
 
+
+      def build_mechanism
+        case @options.mechanism
+        when :null
+          Mechanism::Null.new
+        when :curve
+          unless defined?(Mechanism::Curve)
+            raise LoadError, "require 'omq-curve' to use CURVE security"
+          end
+          Mechanism::Curve.new(
+            server_key: @options.curve_server_key,
+            public_key: @options.curve_public_key,
+            secret_key: @options.curve_secret_key,
+            as_server:  @options.curve_server,
+          )
+        else
+          raise ArgumentError, "unknown mechanism: #{@options.mechanism}"
+        end
+      end
 
       def transport_for(endpoint)
         case endpoint
