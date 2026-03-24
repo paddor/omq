@@ -302,10 +302,11 @@ module OMQ
             raise LoadError, "require 'omq-curve' to use CURVE security"
           end
           Mechanism::Curve.new(
-            server_key: @options.curve_server_key,
-            public_key: @options.curve_public_key,
-            secret_key: @options.curve_secret_key,
-            as_server:  @options.curve_server,
+            server_key:    @options.curve_server_key,
+            public_key:    @options.curve_public_key,
+            secret_key:    @options.curve_secret_key,
+            as_server:     @options.curve_server,
+            authenticator: @options.curve_authenticator,
           )
         else
           raise ArgumentError, "unknown mechanism: #{@options.mechanism}"

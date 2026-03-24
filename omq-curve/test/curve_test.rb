@@ -258,4 +258,149 @@ describe "CURVE encryption" do
       end
     end
   end
+
+  describe "Authentication" do
+    it "allows a client in the allowed Set" do
+      server_pub, server_sec = generate_keypair
+      client_pub, client_sec = generate_keypair
+
+      Async do |task|
+        rep = OMQ::REP.new
+        rep.mechanism           = :curve
+        rep.curve_server        = true
+        rep.curve_public_key    = server_pub
+        rep.curve_secret_key    = server_sec
+        rep.curve_authenticator = Set[client_pub]
+        rep.bind("tcp://127.0.0.1:0")
+        port = rep.last_tcp_port
+
+        task.async do
+          msg = rep.receive
+          rep << msg.map(&:upcase)
+        end
+
+        req = OMQ::REQ.new
+        req.mechanism        = :curve
+        req.curve_server     = false
+        req.curve_public_key = client_pub
+        req.curve_secret_key = client_sec
+        req.curve_server_key = server_pub
+        req.connect("tcp://127.0.0.1:#{port}")
+
+        req << "authenticated"
+        reply = req.receive
+        assert_equal ["AUTHENTICATED"], reply
+      ensure
+        req&.close
+        rep&.close
+      end
+    end
+
+    it "rejects a client not in the allowed Set" do
+      server_pub, server_sec = generate_keypair
+      client_pub, client_sec = generate_keypair
+      other_pub, _           = generate_keypair
+
+      Async do |task|
+        rep = OMQ::REP.new
+        rep.mechanism           = :curve
+        rep.curve_server        = true
+        rep.curve_public_key    = server_pub
+        rep.curve_secret_key    = server_sec
+        rep.curve_authenticator = Set[other_pub]  # only other_pub is allowed
+        rep.bind("tcp://127.0.0.1:0")
+        port = rep.last_tcp_port
+
+        req = OMQ::REQ.new
+        req.mechanism        = :curve
+        req.curve_server     = false
+        req.curve_public_key = client_pub
+        req.curve_secret_key = client_sec
+        req.curve_server_key = server_pub
+        req.recv_timeout     = 1
+        req.send_timeout     = 1
+        req.connect("tcp://127.0.0.1:#{port}")
+
+        req << "should fail"
+        assert_raises(IO::TimeoutError) { req.receive }
+      ensure
+        req&.close
+        rep&.close
+      end
+    end
+
+    it "works with a callable authenticator" do
+      server_pub, server_sec = generate_keypair
+      client_pub, client_sec = generate_keypair
+
+      authenticated_keys = []
+
+      Async do |task|
+        rep = OMQ::REP.new
+        rep.mechanism           = :curve
+        rep.curve_server        = true
+        rep.curve_public_key    = server_pub
+        rep.curve_secret_key    = server_sec
+        rep.curve_authenticator = ->(key) {
+          authenticated_keys << key
+          true
+        }
+        rep.bind("tcp://127.0.0.1:0")
+        port = rep.last_tcp_port
+
+        task.async do
+          msg = rep.receive
+          rep << msg.map(&:upcase)
+        end
+
+        req = OMQ::REQ.new
+        req.mechanism        = :curve
+        req.curve_server     = false
+        req.curve_public_key = client_pub
+        req.curve_secret_key = client_sec
+        req.curve_server_key = server_pub
+        req.connect("tcp://127.0.0.1:#{port}")
+
+        req << "hello"
+        reply = req.receive
+        assert_equal ["HELLO"], reply
+        assert_equal [client_pub], authenticated_keys
+      ensure
+        req&.close
+        rep&.close
+      end
+    end
+
+    it "rejects when callable returns false" do
+      server_pub, server_sec = generate_keypair
+      client_pub, client_sec = generate_keypair
+
+      Async do |task|
+        rep = OMQ::REP.new
+        rep.mechanism           = :curve
+        rep.curve_server        = true
+        rep.curve_public_key    = server_pub
+        rep.curve_secret_key    = server_sec
+        rep.curve_authenticator = ->(_key) { false }
+        rep.bind("tcp://127.0.0.1:0")
+        port = rep.last_tcp_port
+
+        req = OMQ::REQ.new
+        req.mechanism        = :curve
+        req.curve_server     = false
+        req.curve_public_key = client_pub
+        req.curve_secret_key = client_sec
+        req.curve_server_key = server_pub
+        req.recv_timeout     = 1
+        req.send_timeout     = 1
+        req.connect("tcp://127.0.0.1:#{port}")
+
+        req << "should fail"
+        assert_raises(IO::TimeoutError) { req.receive }
+      ensure
+        req&.close
+        rep&.close
+      end
+    end
+  end
 end

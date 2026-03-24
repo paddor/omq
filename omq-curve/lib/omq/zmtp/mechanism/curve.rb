@@ -43,11 +43,15 @@ module OMQ
         # @param secret_key [String] our permanent secret key (32 bytes)
         # @param as_server [Boolean] whether we are the CURVE server
         # @param server_key [String, nil] server's permanent public key (32 bytes, required for clients)
+        # @param authenticator [#include?, #call, nil] client key authenticator (server only).
+        #   Set/Array → checked via #include?. Proc/lambda → called with the 32-byte
+        #   client public key, must return truthy to allow. nil → allow all.
         #
-        def initialize(server_key: nil, public_key:, secret_key:, as_server: false)
+        def initialize(server_key: nil, public_key:, secret_key:, as_server: false, authenticator: nil)
           @permanent_public = RbNaCl::PublicKey.new(public_key.b)
           @permanent_secret = RbNaCl::PrivateKey.new(secret_key.b)
           @as_server        = as_server
+          @authenticator    = authenticator
 
           if as_server
             # One cookie key per socket — enables server statelessness per-connection
@@ -390,6 +394,17 @@ module OMQ
           end
           unless RbNaCl::Util.verify32(vouch_server, @permanent_public.to_s)
             raise ProtocolError, "vouch server key mismatch"
+          end
+
+          # Authenticate client
+          if @authenticator
+            client_key = client_permanent.to_s
+            allowed    = if @authenticator.respond_to?(:include?)
+                           @authenticator.include?(client_key)
+                         else
+                           @authenticator.call(client_key)
+                         end
+            raise ProtocolError, "client key not authorized" unless allowed
           end
 
           # --- READY ---

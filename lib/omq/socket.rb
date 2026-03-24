@@ -39,6 +39,7 @@ module OMQ
       curve_server_key       curve_server_key=
       curve_public_key       curve_public_key=
       curve_secret_key       curve_secret_key=
+      curve_authenticator    curve_authenticator=
     ].each do |method|
       define_method(method) { |*args| @options.public_send(method, *args) }
     end

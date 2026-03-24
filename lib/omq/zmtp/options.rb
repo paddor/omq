@@ -34,6 +34,7 @@ module OMQ
         @curve_server_key       = nil  # 32-byte binary (server's permanent public key)
         @curve_public_key       = nil  # 32-byte binary (our permanent public key)
         @curve_secret_key       = nil  # 32-byte binary (our permanent secret key)
+        @curve_authenticator    = nil  # nil = allow all, Set = allowlist, #call = custom
       end
 
       attr_accessor :send_hwm,  :recv_hwm,
@@ -47,7 +48,8 @@ module OMQ
                     :max_message_size,
                     :mechanism,
                     :curve_server,          :curve_server_key,
-                    :curve_public_key,      :curve_secret_key
+                    :curve_public_key,      :curve_secret_key,
+                    :curve_authenticator
 
       alias_method :router_mandatory?, :router_mandatory
       alias_method :recv_timeout,      :read_timeout
