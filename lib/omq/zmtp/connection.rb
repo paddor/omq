@@ -171,9 +171,10 @@ module OMQ
           frame = Codec::Frame.read_from(@io)
           touch_heartbeat
 
-          # Encrypted mechanisms wrap every frame in a MESSAGE envelope.
-          # libzmq sends these as data frames (not command frames), so we
-          # detect by checking the body prefix rather than the command flag.
+          # When CURVE is active, every wire frame is a MESSAGE envelope
+          # (data frame with "\x07MESSAGE" prefix). Decrypt to recover the
+          # inner ZMTP frame. This check only runs when encrypted? is true,
+          # so user data frames are never misdetected.
           if @mechanism.encrypted? && frame.body.bytesize > 8 && frame.body.byteslice(0, 8) == "\x07MESSAGE".b
             frame = @mechanism.decrypt(frame)
           end
@@ -227,21 +228,6 @@ module OMQ
         @mutex.synchronize { @io.write(frame.to_wire) }
       end
 
-      # Reads exactly n bytes from @io.
-      #
-      # @param n [Integer]
-      # @return [String]
-      # @raise [EOFError]
-      #
-      def read_exact(n)
-        data = "".b
-        while data.bytesize < n
-          chunk = @io.read(n - data.bytesize)
-          raise EOFError, "connection closed" if chunk.nil? || chunk.empty?
-          data << chunk
-        end
-        data
-      end
     end
   end
 end

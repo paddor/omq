@@ -39,6 +39,9 @@ module OMQ
         # Crypto overhead: 16 bytes Poly1305 authenticator
         BOX_OVERHEAD = 16
 
+        # Maximum nonce value (2^64 - 1). Exceeding this would reuse nonces.
+        MAX_NONCE = (2**64) - 1
+
         # @param public_key [String] our permanent public key (32 bytes)
         # @param secret_key [String] our permanent secret key (32 bytes)
         # @param as_server [Boolean] whether we are the CURVE server
@@ -48,6 +51,9 @@ module OMQ
         #   client public key, must return truthy to allow. nil → allow all.
         #
         def initialize(server_key: nil, public_key:, secret_key:, as_server: false, authenticator: nil)
+          validate_key!(public_key, "public_key")
+          validate_key!(secret_key, "secret_key")
+
           @permanent_public = RbNaCl::PublicKey.new(public_key.b)
           @permanent_secret = RbNaCl::PrivateKey.new(secret_key.b)
           @as_server        = as_server
@@ -57,7 +63,7 @@ module OMQ
             # One cookie key per socket — enables server statelessness per-connection
             @cookie_key = RbNaCl::Random.random_bytes(32)
           else
-            raise ArgumentError, "server_key is required for CURVE clients" unless server_key
+            validate_key!(server_key, "server_key")
             @server_public = RbNaCl::PublicKey.new(server_key.b)
           end
 
@@ -326,11 +332,9 @@ module OMQ
 
           io.write(Codec::Frame.new(welcome, command: true).to_wire)
 
-          # Server is now stateless — sn_secret and cn_public will be recovered
-          # from the cookie in INITIATE. Only @cookie_key (socket-wide) is needed.
-          sn_secret = cn_public = nil
-
           # --- Read INITIATE ---
+          # Server recovers cn_public and sn_secret from the cookie below.
+          # Only @cookie_key (socket-wide) is needed to process INITIATE.
           init_frame = Codec::Frame.read_from(io)
           raise ProtocolError, "expected command frame" unless init_frame.command?
           init_cmd = Codec::Command.from_body(init_frame.body)
@@ -442,6 +446,7 @@ module OMQ
 
         def make_send_nonce
           @send_nonce += 1
+          raise ProtocolError, "nonce counter exhausted" if @send_nonce > MAX_NONCE
           short = [@send_nonce].pack("Q>")
           send_nonce_prefix + short
         end
@@ -452,6 +457,11 @@ module OMQ
 
         def recv_nonce_prefix
           @as_server ? NONCE_PREFIX_MESSAGE_C : NONCE_PREFIX_MESSAGE_S
+        end
+
+        def validate_key!(key, name)
+          raise ArgumentError, "#{name} is required" if key.nil?
+          raise ArgumentError, "#{name} must be 32 bytes (got #{key.b.bytesize})" unless key.b.bytesize == 32
         end
       end
     end
