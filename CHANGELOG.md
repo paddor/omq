@@ -27,4 +27,4 @@ Initial release. Pure Ruby implementation of ZMTP 3.1 (ZeroMQ) using Async.
 - `max_message_size` enforcement
 - `connect_timeout` for TCP
 - Works inside Async reactors or standalone (shared IO thread)
-- Optional CURVE encryption via the `omq-curve` gem
+- Optional CURVE encryption via the [omq-curve](https://github.com/paddor/omq-curve) gem

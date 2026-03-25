@@ -306,7 +306,7 @@ module OMQ
           Mechanism::Null.new
         when :curve
           unless defined?(Mechanism::Curve)
-            raise LoadError, "require 'omq-curve' to use CURVE security"
+            raise LoadError, "require 'omq/curve' to use CURVE security"
           end
           Mechanism::Curve.new(
             server_key:    @options.curve_server_key,
