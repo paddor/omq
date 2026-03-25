@@ -1,85 +1,122 @@
 # frozen_string_literal: true
 
-# Benchmark: 3-stage push→pull pipeline
+# Benchmark: fan-out/fan-in with CPU work
 #
-# Compares: Async fibers (ipc) vs Ractors (tcp)
+# Compares: Async fibers (1 thread) vs Ractors (true parallelism)
 #
-# Pipeline: producer → stage1 → stage2 → stage3 → collector
-# Each stage forwards the message (measures pure transport overhead).
+# Topology:  producer → PUSH/PULL → N workers → PUSH/PULL → collector
+# Each worker computes fib(30) per message (~2 ms of CPU work).
 #
-# Run separately (Ractors need their own process):
+# Async workers share one thread — CPU work is sequential.
+# Ractor workers run on separate threads — CPU work is parallel.
+#
+# Run:
 #   ruby --yjit bench/ractors_vs_async.rb async
 #   ruby --yjit bench/ractors_vs_async.rb ractors
 
 $VERBOSE = nil
+$stdout.sync = true
 
 require_relative "../lib/omq"
 require "async"
-require "benchmark/ips"
 require "console"
 Console.logger = Console::Logger.new(Console::Output::Null.new)
 
-PAYLOAD = ("x" * 64).freeze
+N_WORKERS  = 4
+N_MESSAGES = 200
+
+def fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2)
 
 jit = defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled? ? "+YJIT" : "no JIT"
 puts "OMQ #{OMQ::VERSION} | Ruby #{RUBY_VERSION} (#{jit})"
-puts "Pipeline: producer → 3 stages → collector (64 B payload)"
+puts "Fan-out: producer → #{N_WORKERS} workers×fib(30) → collector"
+puts "#{N_MESSAGES} messages, 64 B each"
 puts
+
+PAYLOAD = ("x" * 64).freeze
 
 case ARGV[0]
 when "async"
   Async do |task|
-    addrs = 4.times.map { |i| "ipc:///tmp/omq_bench_pipe_#{i}_#{$$}.sock" }
+    work_addr   = "ipc:///tmp/omq_bench_work_#{$$}.sock"
+    result_addr = "ipc:///tmp/omq_bench_result_#{$$}.sock"
 
-    stages = []
-    3.times do |i|
-      pull = OMQ::PULL.bind(addrs[i])
-      push = OMQ::PUSH.connect(addrs[i + 1])
-      stages << [pull, push]
-      task.async { loop { push << pull.receive } }
+    # Workers
+    N_WORKERS.times do
+      task.async do
+        pull = OMQ::PULL.connect(work_addr)
+        push = OMQ::PUSH.connect(result_addr)
+        loop do
+          msg = pull.receive
+          fib(30)
+          push << msg
+        end
+      ensure
+        pull&.close; push&.close
+      end
     end
 
-    producer  = OMQ::PUSH.connect(addrs[0])
-    collector = OMQ::PULL.bind(addrs[3])
+    producer  = OMQ::PUSH.bind(work_addr)
+    collector = OMQ::PULL.bind(result_addr)
 
-    200.times { producer << PAYLOAD; collector.receive }
+    # Warm up
+    20.times { producer << PAYLOAD; collector.receive }
 
-    Benchmark.ips do |x|
-      x.config(warmup: 2, time: 5)
-      x.report("async (ipc)") { producer << PAYLOAD; collector.receive }
-    end
+    # Timed run
+    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    task.async { N_MESSAGES.times { producer << PAYLOAD } }
+    N_MESSAGES.times { collector.receive }
+
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+    rate    = N_MESSAGES / elapsed
+
+    puts "async  (ipc, 1 thread):  %7.1f msg/s  (%5.0f ms)" % [rate, elapsed * 1000]
   ensure
     producer&.close; collector&.close
-    stages&.each { |p, s| p&.close; s&.close }
   end
 
 when "ractors"
-  base  = 17_100 + rand(900)
-  ports = 4.times.map { |i| base + i }
+  tag         = "omq_bench_#{$$}"
+  work_addr   = "ipc://@#{tag}_work"
+  result_addr = "ipc://@#{tag}_result"
 
-  3.times.map do |i|
-    Ractor.new(ports[i], ports[i + 1]) do |inp, outp|
+  N_WORKERS.times do |i|
+    Ractor.new(work_addr, result_addr) do |wa, ra|
       Console.logger = Console::Logger.new(Console::Output::Null.new)
+      w = Module.new { module_function; def fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2) }
       Async do
-        pull = OMQ::PULL.bind("tcp://127.0.0.1:#{inp}")
-        push = OMQ::PUSH.connect("tcp://127.0.0.1:#{outp}")
-        loop { push << pull.receive }
+        pull = OMQ::PULL.connect(wa)
+        push = OMQ::PUSH.connect(ra)
+        loop do
+          msg = pull.receive
+          w.fib(30)
+          push << msg
+        end
       ensure
         pull&.close; push&.close
       end
     end
   end
 
-  Async do
-    collector = OMQ::PULL.bind("tcp://127.0.0.1:#{ports[3]}")
-    producer  = OMQ::PUSH.connect("tcp://127.0.0.1:#{ports[0]}")
+  Async do |task|
+    producer  = OMQ::PUSH.bind(work_addr)
+    collector = OMQ::PULL.bind(result_addr)
     sleep 0.5
-    200.times { producer << PAYLOAD; collector.receive }
 
-    Benchmark.ips do |x|
-      x.config(warmup: 2, time: 5)
-      x.report("ractors (tcp)") { producer << PAYLOAD; collector.receive }
-    end
+    # Warm up
+    20.times { producer << PAYLOAD; collector.receive }
+
+    # Timed run
+    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+    task.async { N_MESSAGES.times { producer << PAYLOAD } }
+    N_MESSAGES.times { collector.receive }
+
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+    rate    = N_MESSAGES / elapsed
+
+    puts "ractors (ipc, #{N_WORKERS} threads): %7.1f msg/s  (%5.0f ms)" % [rate, elapsed * 1000]
   ensure
     producer&.close; collector&.close
   end
