@@ -3,6 +3,33 @@
 require_relative "test_helper"
 
 describe "Auto-reconnection" do
+  it "connects silently when server is not yet running" do
+    Async do
+      # Client connects before server exists — should not raise
+      req = OMQ::REQ.new(nil, linger: 0)
+      req.reconnect_interval = 0.1
+      req.connect("tcp://127.0.0.1:19876")
+
+      # Start server after a delay
+      sleep 0.3
+      rep = OMQ::REP.new(nil, linger: 0)
+      rep.bind("tcp://127.0.0.1:19876")
+
+      # Wait for background reconnect to succeed
+      sleep 0.5
+
+      req.send("late start")
+      msg = rep.receive
+      assert_equal ["late start"], msg
+      rep.send("ok")
+      reply = req.receive
+      assert_equal ["ok"], reply
+    ensure
+      req&.close
+      rep&.close
+    end
+  end
+
   it "reconnects after server restart over TCP" do
     Async do
       # Start server

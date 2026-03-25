@@ -66,6 +66,9 @@ module OMQ
         @connected_endpoints << endpoint
         transport = transport_for(endpoint)
         transport.connect(endpoint, self)
+      rescue Errno::ECONNREFUSED, Errno::ENOENT, IOError, ProtocolError
+        # Server not up yet — schedule background reconnect
+        schedule_reconnect(endpoint)
       end
 
       # Disconnects from an endpoint. Closes connections to that endpoint

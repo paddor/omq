@@ -53,11 +53,9 @@ describe "disconnect / unbind" do
       # Unbind
       rep.unbind("tcp://127.0.0.1:#{port}")
 
-      # New connections should fail
+      # New connections silently retry in background (no raise)
       req2 = OMQ::REQ.new
-      assert_raises(Errno::ECONNREFUSED) do
-        req2.connect("tcp://127.0.0.1:#{port}")
-      end
+      req2.connect("tcp://127.0.0.1:#{port}")  # does not raise
     ensure
       req&.close
       req2&.close
