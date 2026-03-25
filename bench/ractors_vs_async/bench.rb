@@ -5,19 +5,19 @@
 # Compares: Async fibers (1 thread) vs Ractors (true parallelism)
 #
 # Topology:  producer → PUSH/PULL → N workers → PUSH/PULL → collector
-# Each worker computes fib(30) per message (~2 ms of CPU work).
+# Each worker computes fib(28) per message (~2 ms of CPU work).
 #
 # Async workers share one thread — CPU work is sequential.
 # Ractor workers run on separate threads — CPU work is parallel.
 #
 # Run:
-#   ruby --yjit bench/ractors_vs_async.rb async
-#   ruby --yjit bench/ractors_vs_async.rb ractors
+#   ruby --yjit bench/ractors_vs_async/bench.rb async
+#   ruby --yjit bench/ractors_vs_async/bench.rb ractors
 
 $VERBOSE = nil
 $stdout.sync = true
 
-require_relative "../lib/omq"
+require_relative "../../lib/omq"
 require "async"
 require "console"
 Console.logger = Console::Logger.new(Console::Output::Null.new)
@@ -29,7 +29,7 @@ def fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2)
 
 jit = defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled? ? "+YJIT" : "no JIT"
 puts "OMQ #{OMQ::VERSION} | Ruby #{RUBY_VERSION} (#{jit})"
-puts "Fan-out: producer → #{N_WORKERS} workers×fib(30) → collector"
+puts "Fan-out: producer → #{N_WORKERS} workers×fib(28) → collector"
 puts "#{N_MESSAGES} messages, 64 B each"
 puts
 
@@ -48,7 +48,7 @@ when "async"
         push = OMQ::PUSH.connect(result_addr)
         loop do
           msg = pull.receive
-          fib(30)
+          fib(28)
           push << msg
         end
       ensure
@@ -90,7 +90,7 @@ when "ractors"
         push = OMQ::PUSH.connect(ra)
         loop do
           msg = pull.receive
-          w.fib(30)
+          w.fib(28)
           push << msg
         end
       ensure
