@@ -15,31 +15,31 @@ module OMQ
     # Delegate socket option accessors to @options.
     #
     %i[
-      send_hwm       send_hwm=
-      recv_hwm       recv_hwm=
-      linger         linger=
-      identity       identity=
-      recv_timeout   recv_timeout=
-      send_timeout   send_timeout=
-      read_timeout   read_timeout=
-      write_timeout  write_timeout=
-      router_mandatory   router_mandatory=
+      send_hwm                send_hwm=
+      recv_hwm                recv_hwm=
+      linger                  linger=
+      identity                identity=
+      recv_timeout            recv_timeout=
+      send_timeout            send_timeout=
+      read_timeout            read_timeout=
+      write_timeout           write_timeout=
+      router_mandatory        router_mandatory=
       router_mandatory?
-      reconnect_interval  reconnect_interval=
-      heartbeat_interval        heartbeat_interval=
-      heartbeat_ttl        heartbeat_ttl=
-      heartbeat_timeout    heartbeat_timeout=
-      tcp_keepalive        tcp_keepalive=
-      tcp_keepalive_idle   tcp_keepalive_idle=
+      reconnect_interval      reconnect_interval=
+      heartbeat_interval      heartbeat_interval=
+      heartbeat_ttl           heartbeat_ttl=
+      heartbeat_timeout       heartbeat_timeout=
+      tcp_keepalive           tcp_keepalive=
+      tcp_keepalive_idle      tcp_keepalive_idle=
       tcp_keepalive_count     tcp_keepalive_count=
       tcp_keepalive_interval  tcp_keepalive_interval=
       max_message_size        max_message_size=
-      mechanism              mechanism=
-      curve_server           curve_server=
-      curve_server_key       curve_server_key=
-      curve_public_key       curve_public_key=
-      curve_secret_key       curve_secret_key=
-      curve_authenticator    curve_authenticator=
+      mechanism               mechanism=
+      curve_server            curve_server=
+      curve_server_key        curve_server_key=
+      curve_public_key        curve_public_key=
+      curve_secret_key        curve_secret_key=
+      curve_authenticator     curve_authenticator=
     ].each do |method|
       define_method(method) { |*args| @options.public_send(method, *args) }
     end
