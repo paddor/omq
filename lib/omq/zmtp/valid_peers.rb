@@ -5,17 +5,17 @@ module OMQ
     # Valid socket type peer combinations per ZMTP spec.
     #
     VALID_PEERS = {
-      PAIR:   %i[PAIR],
-      REQ:    %i[REP ROUTER],
-      REP:    %i[REQ DEALER],
-      DEALER: %i[REP DEALER ROUTER],
-      ROUTER: %i[REQ DEALER ROUTER],
-      PUB:    %i[SUB XSUB],
-      SUB:    %i[PUB XPUB],
-      XPUB:   %i[SUB XSUB],
-      XSUB:   %i[PUB XPUB],
-      PUSH:   %i[PULL],
-      PULL:   %i[PUSH],
+      PAIR:   %i[PAIR].freeze,
+      REQ:    %i[REP ROUTER].freeze,
+      REP:    %i[REQ DEALER].freeze,
+      DEALER: %i[REP DEALER ROUTER].freeze,
+      ROUTER: %i[REQ DEALER ROUTER].freeze,
+      PUB:    %i[SUB XSUB].freeze,
+      SUB:    %i[PUB XPUB].freeze,
+      XPUB:   %i[SUB XSUB].freeze,
+      XSUB:   %i[PUB XPUB].freeze,
+      PUSH:   %i[PULL].freeze,
+      PULL:   %i[PUSH].freeze,
     }.freeze
   end
 end
