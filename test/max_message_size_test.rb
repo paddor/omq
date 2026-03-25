@@ -51,6 +51,25 @@ describe "max_message_size" do
     end
   end
 
+  it "accepts messages exactly at the limit" do
+    Async do
+      rep = OMQ::REP.new(nil, linger: 0)
+      rep.max_message_size = 100
+      rep.bind("tcp://127.0.0.1:0")
+      port = rep.last_tcp_port
+
+      req = OMQ::REQ.new(nil, linger: 0)
+      req.connect("tcp://127.0.0.1:#{port}")
+
+      req.send("x" * 100)
+      msg = rep.receive
+      assert_equal 100, msg.first.bytesize
+    ensure
+      req&.close
+      rep&.close
+    end
+  end
+
   it "has no limit by default" do
     Async do
       rep = OMQ::REP.new(nil, linger: 0)
