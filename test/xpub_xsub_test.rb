@@ -58,6 +58,22 @@ describe "XPUB/XSUB" do
     end
   end
 
+  it "XSUB subscribes via prefix: kwarg" do
+    Async do
+      pub  = OMQ::PUB.bind("inproc://pub-xsub-2")
+      xsub = OMQ::XSUB.connect("inproc://pub-xsub-2", prefix: "fx.")
+
+      Async::Task.current.yield
+
+      pub.send("fx.EURUSD")
+      msg = xsub.receive
+      assert_equal ["fx.EURUSD"], msg
+    ensure
+      xsub&.close
+      pub&.close
+    end
+  end
+
   it "XPUB receives unsubscription notifications" do
     Async do
       xpub = OMQ::XPUB.bind("inproc://xpub-unsub-1")
