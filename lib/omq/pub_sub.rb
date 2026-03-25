@@ -1,6 +1,15 @@
 # frozen_string_literal: true
 
 module OMQ
+  class PUB < Socket
+    include ZMTP::Writable
+
+    def initialize(endpoints = nil, linger: 0)
+      _init_engine(:PUB, linger: linger)
+      _attach(endpoints, default: :bind)
+    end
+  end
+
   # SUB socket.
   #
   class SUB < Socket
@@ -37,6 +46,32 @@ module OMQ
     #
     def unsubscribe(prefix)
       @engine.routing.unsubscribe(prefix)
+    end
+  end
+
+  class XPUB < Socket
+    include ZMTP::Readable
+    include ZMTP::Writable
+
+    def initialize(endpoints = nil, linger: 0)
+      _init_engine(:XPUB, linger: linger)
+      _attach(endpoints, default: :bind)
+    end
+  end
+
+  class XSUB < Socket
+    include ZMTP::Readable
+    include ZMTP::Writable
+
+    # @param endpoints [String, nil]
+    # @param linger [Integer]
+    # @param prefix [String, nil] subscription prefix; +nil+ (default)
+    #   means no subscription — send a subscribe frame explicitly.
+    #
+    def initialize(endpoints = nil, linger: 0, prefix: nil)
+      _init_engine(:XSUB, linger: linger)
+      _attach(endpoints, default: :connect)
+      send("\x01#{prefix}".b) unless prefix.nil?
     end
   end
 end

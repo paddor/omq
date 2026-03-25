@@ -2,6 +2,28 @@
 
 require_relative "../test_helper"
 
+describe "PUB/SUB" do
+  before { OMQ::ZMTP::Transport::Inproc.reset! }
+
+  it "delivers messages matching subscription" do
+    Async do
+      pub = OMQ::PUB.bind("inproc://pubsub-1")
+      sub = OMQ::SUB.connect("inproc://pubsub-1")
+      sub.subscribe("topic.")
+
+      # Give subscription time to propagate
+      Async::Task.current.yield
+
+      pub.send("topic.hello")
+      msg = sub.receive
+      assert_equal ["topic.hello"], msg
+    ensure
+      sub&.close
+      pub&.close
+    end
+  end
+end
+
 describe "XPUB/XSUB" do
   before { OMQ::ZMTP::Transport::Inproc.reset! }
 
