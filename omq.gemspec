@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "lib/omq/version"
+
 Gem::Specification.new do |s|
   s.name     = "omq"
-  s.version  = "0.1.0"
+  s.version  = OMQ::VERSION
   s.authors  = ["Patrik Wenger"]
   s.email    = ["paddor@gmail.com"]
   s.summary  = "OMQ — pure Ruby ZeroMQ (ZMTP 3.1)"
@@ -13,7 +15,7 @@ Gem::Specification.new do |s|
 
   s.required_ruby_version = ">= 3.3"
 
-  s.files = Dir["lib/**/*.rb", "README.md", "LICENSE"]
+  s.files = Dir["lib/**/*.rb", "README.md", "LICENSE", "CHANGELOG.md"]
 
   s.add_dependency "async", "~> 2"
   s.add_dependency "io-stream", "~> 0.11"
