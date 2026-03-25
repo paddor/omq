@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require_relative "../test_helper"
 
 describe "Linger" do
   it "drains send queue before closing when linger > 0" do

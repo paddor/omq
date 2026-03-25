@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require_relative "../test_helper"
 
 describe "max_message_size" do
   it "rejects oversized frames over TCP" do

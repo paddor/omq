@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../test_helper"
+require_relative "../../../test_helper"
 
 describe OMQ::ZMTP::Transport::Inproc do
   Inproc = OMQ::ZMTP::Transport::Inproc

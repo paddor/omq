@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require_relative "../test_helper"
 
 describe "Reconnection with Range backoff" do
   it "reconnects with exponential backoff" do

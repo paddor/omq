@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../test_helper"
+require_relative "../../../test_helper"
 
 describe OMQ::ZMTP::Codec::Command do
   Command = OMQ::ZMTP::Codec::Command

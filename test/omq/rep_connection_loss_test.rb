@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "test_helper"
+require_relative "../test_helper"
 
 describe "REP connection loss with pending reply" do
   it "discards pending reply when connection drops" do

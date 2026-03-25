@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../test_helper"
+require_relative "../../../test_helper"
 
 describe "TCP transport" do
   it "PAIR over TCP with ephemeral port" do
