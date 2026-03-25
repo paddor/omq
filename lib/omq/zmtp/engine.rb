@@ -18,6 +18,10 @@ module OMQ
       #
       attr_reader :options
 
+      # @return [Routing] routing strategy
+      #
+      attr_reader :routing
+
       # @return [String, nil] last bound endpoint
       #
       attr_reader :last_endpoint
@@ -66,7 +70,7 @@ module OMQ
         @connected_endpoints << endpoint
         transport = transport_for(endpoint)
         transport.connect(endpoint, self)
-      rescue Errno::ECONNREFUSED, Errno::ENOENT, IOError, ProtocolError
+      rescue Errno::ECONNREFUSED, Errno::ENOENT, Errno::ETIMEDOUT, IOError, ProtocolError
         # Server not up yet — schedule background reconnect
         schedule_reconnect(endpoint)
       end
@@ -288,7 +292,7 @@ module OMQ
               transport = transport_for(endpoint)
               transport.connect(endpoint, self)
               break # reconnected successfully
-            rescue Errno::ECONNREFUSED, IOError, ProtocolError
+            rescue Errno::ECONNREFUSED, Errno::ETIMEDOUT, IOError, ProtocolError
               delay = [delay * 2, max_delay].min if max_delay
             end
           end

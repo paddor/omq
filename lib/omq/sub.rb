@@ -27,7 +27,7 @@ module OMQ
     # @return [void]
     #
     def subscribe(prefix = EVERYTHING)
-      @engine.instance_variable_get(:@routing).subscribe(prefix)
+      @engine.routing.subscribe(prefix)
     end
 
     # Unsubscribes from a topic prefix.
@@ -36,7 +36,7 @@ module OMQ
     # @return [void]
     #
     def unsubscribe(prefix)
-      @engine.instance_variable_get(:@routing).unsubscribe(prefix)
+      @engine.routing.unsubscribe(prefix)
     end
   end
 end
