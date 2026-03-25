@@ -8,10 +8,8 @@
 # Protocol internals live under OMQ::ZMTP:: and are not part
 # of the public API.
 #
-module OMQ
-  VERSION = "0.1.0"
-end
 
+require_relative "omq/version"
 require_relative "omq/zmtp"
 require_relative "omq/socket"
 require_relative "omq/sockets"
