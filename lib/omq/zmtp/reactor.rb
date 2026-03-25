@@ -69,7 +69,7 @@ module OMQ
             @wake_r, @wake_w = IO.pipe
             ready = Thread::Queue.new
             @thread = Thread.new { run_reactor(ready, @wake_r) }
-            @thread.name = "cztop-io"
+            @thread.name = "omq-io"
             ready.pop
           end
         end
