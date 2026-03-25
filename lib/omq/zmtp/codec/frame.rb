@@ -75,7 +75,7 @@ module OMQ
         # @raise [EOFError] if the connection is closed
         #
         def self.read_from(io)
-          flags_byte = read_exact(io, 1)
+          flags_byte = ZMTP.read_exact(io, 1)
           flags_buf = IO::Buffer.for(flags_byte)
           flags = flags_buf.get_value(:U8, 0)
 
@@ -84,37 +84,20 @@ module OMQ
           command = (flags & FLAGS_COMMAND) != 0
 
           if long
-            size_bytes = read_exact(io, 8)
+            size_bytes = ZMTP.read_exact(io, 8)
             size_buf = IO::Buffer.for(size_bytes)
             size = size_buf.get_value(:U64, 0) # big-endian
           else
-            size_byte = read_exact(io, 1)
+            size_byte = ZMTP.read_exact(io, 1)
             size_buf = IO::Buffer.for(size_byte)
             size = size_buf.get_value(:U8, 0)
           end
 
-          body = size > 0 ? read_exact(io, size) : "".b
+          body = size > 0 ? ZMTP.read_exact(io, size) : "".b
 
           new(body, more: more, command: command)
         end
 
-        # Reads exactly n bytes from io, raising on short read or EOF.
-        #
-        # @param io [#read]
-        # @param n [Integer]
-        # @return [String]
-        # @raise [EOFError]
-        #
-        def self.read_exact(io, n)
-          data = "".b
-          while data.bytesize < n
-            chunk = io.read(n - data.bytesize)
-            raise EOFError, "connection closed" if chunk.nil? || chunk.empty?
-            data << chunk
-          end
-          data
-        end
-        private_class_method :read_exact
       end
     end
   end
