@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../lib/omq"
+require_relative "../../lib/omq"
 require "async"
 
 Async do
