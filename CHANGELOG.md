@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 — 2026-03-26
+
+### Changed
+
+- `mechanism` option now holds the mechanism instance directly
+  (`Mechanism::Null.new` by default). For CURVE, use
+  `OMQ::Curve.server(pub, sec)` or `OMQ::Curve.client(pub, sec, server_key: k)`.
+- Removed `curve_server`, `curve_server_key`, `curve_public_key`,
+  `curve_secret_key`, `curve_authenticator` socket options
+
 ## 0.1.1 — 2026-03-26
 
 ### Fixed

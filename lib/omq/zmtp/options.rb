@@ -25,12 +25,7 @@ module OMQ
         @heartbeat_ttl         = nil   # seconds, nil = use heartbeat_interval
         @heartbeat_timeout     = nil   # seconds, nil = use heartbeat_interval
         @max_message_size       = nil  # bytes, nil = unlimited
-        @mechanism              = :null # :null or :curve
-        @curve_server           = false
-        @curve_server_key       = nil  # 32-byte binary (server's permanent public key)
-        @curve_public_key       = nil  # 32-byte binary (our permanent public key)
-        @curve_secret_key       = nil  # 32-byte binary (our permanent secret key)
-        @curve_authenticator    = nil  # nil = allow all, Set = allowlist, #call = custom
+        @mechanism              = Mechanism::Null.new
       end
 
       attr_accessor :send_hwm,  :recv_hwm,
@@ -40,10 +35,7 @@ module OMQ
                     :reconnect_interval,
                     :heartbeat_interval,    :heartbeat_ttl,    :heartbeat_timeout,
                     :max_message_size,
-                    :mechanism,
-                    :curve_server,          :curve_server_key,
-                    :curve_public_key,      :curve_secret_key,
-                    :curve_authenticator
+                    :mechanism
 
       alias_method :router_mandatory?, :router_mandatory
       alias_method :recv_timeout,      :read_timeout
