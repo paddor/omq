@@ -5,7 +5,7 @@ require "async"
 
 Async do
   push = OMQ::PUSH.bind("tcp://*:5557")
-  puts "Ventilator bound on tcp://5557 — type tasks, one per line"
+  puts "Ventilator bound on #{push.last_endpoint} — type tasks, one per line"
 
   loop do
     print "> "

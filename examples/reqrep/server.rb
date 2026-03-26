@@ -5,7 +5,7 @@ require "async"
 
 Async do
   rep = OMQ::REP.bind("tcp://*:5555")
-  puts "Server listening on tcp://5555 ..."
+  puts "Server listening on #{rep.last_endpoint} ..."
 
   loop do
     msg = rep.receive

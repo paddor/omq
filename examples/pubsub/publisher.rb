@@ -5,7 +5,7 @@ require "async"
 
 Async do
   pub = OMQ::PUB.bind("tcp://*:5556")
-  puts "Publisher bound on tcp://5556 — broadcasting every second ..."
+  puts "Publisher bound on #{pub.last_endpoint} — broadcasting every second ..."
 
   i = 0
   loop do

@@ -5,7 +5,7 @@ require "async"
 
 Async do
   req = OMQ::REQ.connect("tcp://localhost:5555")
-  puts "Client connected to tcp://5555"
+  puts "Client connected to tcp://localhost:5555"
 
   loop do
     print "> "

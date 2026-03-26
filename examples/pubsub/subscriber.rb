@@ -9,7 +9,7 @@ label  = prefix.empty? ? "everything" : prefix
 Async do
   sub = OMQ::SUB.connect("tcp://localhost:5556")
   sub.subscribe(prefix)
-  puts "Subscribed to #{label.inspect} on tcp://5556 ..."
+  puts "Subscribed to #{label.inspect} on tcp://localhost:5556 ..."
 
   loop do
     msg = sub.receive
