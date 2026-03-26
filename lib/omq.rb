@@ -17,3 +17,6 @@ require_relative "omq/router_dealer"
 require_relative "omq/pub_sub"
 require_relative "omq/push_pull"
 require_relative "omq/pair"
+
+# For the purists.
+ØMQ = OMQ

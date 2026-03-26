@@ -7,7 +7,11 @@
 
 Pure Ruby implementation of the [ZMTP 3.1](https://rfc.zeromq.org/spec/23/) wire protocol ([ZeroMQ](https://zeromq.org/)) using the [Async](https://github.com/socketry/async) gem. No native libraries required.
 
-> **186k msg/s** inproc throughput | **12 µs** req/rep roundtrip latency | pure Ruby + YJIT
+> **167k msg/s** inproc | **42k msg/s** ipc | **32k msg/s** tcp
+>
+> **15 µs** inproc latency | **62 µs** ipc | **88 µs** tcp
+>
+> Ruby 4.0 + YJIT on a Linux VM on a 2019 MacBook Pro (Intel)
 
 ---
 
@@ -25,7 +29,7 @@ Modern Ruby has closed the gap:
 
 - **YJIT** — JIT-compiled hot paths close the throughput gap with C extensions
 - **Fiber Scheduler** — non-blocking I/O without callbacks or threads (`Async` builds on this)
-- **`IO::Buffer`** — zero-copy binary reads/writes, no manual `String#b` packing
+- **`io-stream`** — buffered I/O with read-ahead, from the Async ecosystem
 
 When [CZTop](https://github.com/paddor/cztop) was written, none of this existed. Today, a pure Ruby ZMTP implementation is fast enough for production use — and you get `gem install` with no compiler toolchain, no system packages, and no segfaults.
 
@@ -109,7 +113,11 @@ end
 | Routing | `DEALER`, `ROUTER` | bidirectional |
 | Exclusive pair | `PAIR` | bidirectional |
 
-All classes live under `OMQ::`.
+All classes live under `OMQ::`. For the purists, `ØMQ` is an alias:
+
+```ruby
+req = ØMQ::REQ.new(">tcp://localhost:5555")
+```
 
 ## Performance
 
