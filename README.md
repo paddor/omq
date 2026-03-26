@@ -7,11 +7,11 @@
 
 Pure Ruby implementation of the [ZMTP 3.1](https://rfc.zeromq.org/spec/23/) wire protocol ([ZeroMQ](https://zeromq.org/)) using the [Async](https://github.com/socketry/async) gem. No native libraries required.
 
-> **167k msg/s** inproc | **42k msg/s** ipc | **32k msg/s** tcp
+> **145k msg/s** inproc | **40k msg/s** ipc | **32k msg/s** tcp
 >
 > **15 µs** inproc latency | **62 µs** ipc | **88 µs** tcp
 >
-> Ruby 4.0 + YJIT on a Linux VM on a 2019 MacBook Pro (Intel)
+> Ruby 4.0 + YJIT on a Linux VM on a 2019 MacBook Pro (Intel) — [223k msg/s with io_uring](bench/README.md#io_uring)
 
 ---
 

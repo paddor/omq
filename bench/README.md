@@ -1,21 +1,33 @@
 # Benchmarks
 
-Measured with `benchmark-ips` on Linux x86_64, Ruby 4.0.1 +YJIT.
+Measured with `benchmark-ips` on Linux x86_64, Ruby 4.0.2 +YJIT (epoll).
 
 ## Throughput (push/pull, msg/s)
 
 | Message size | inproc | ipc | tcp |
 |---|---|---|---|
-| 64 B | 177k | 40k | 32k |
-| 256 B | 160k | 35k | 30k |
-| 1024 B | 157k | 37k | 29k |
-| 4096 B | 150k | 22k | 19k |
+| 64 B | 145k | 40k | 32k |
+| 256 B | 146k | 42k | 25k |
+| 1024 B | 142k | 41k | 26k |
+| 4096 B | 167k | 37k | 26k |
 
 ## Latency (req/rep roundtrip)
 
 | | inproc | ipc | tcp |
 |---|---|---|---|
-| roundtrip | 16 µs | 74 µs | 112 µs |
+| roundtrip | 15 µs | 62 µs | 88 µs |
+
+## io_uring
+
+With `liburing-dev` installed, io-event uses io_uring instead of epoll.
+Inproc throughput jumps to **223k msg/s** (9.5 µs latency) — a 54% improvement.
+IPC and TCP are within variance.
+
+```sh
+# Debian/Ubuntu
+sudo apt install liburing-dev
+gem pristine io-event
+```
 
 ## Running
 
