@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.0 — 2026-03-26
+
+### Added
+
+- `omqcat` CLI tool — nngcat-like Swiss army knife for OMQ sockets
+  - Socket types: req, rep, pub, sub, push, pull, pair, dealer, router
+  - Formats: ascii (default, tab-separated), quoted, raw, jsonl, msgpack
+  - `-e` / `--eval` — Ruby code runs inside the socket instance
+    (`$F` = message parts, full socket API available: `self <<`, `send`,
+    `subscribe`, etc.). REP auto-replies with the return value;
+    PAIR/DEALER use `self <<` explicitly
+  - `-r` / `--require` to load gems for use in `-e`
+  - `-z` / `--compress` Zstandard compression per frame (requires `zstd-ruby`)
+  - `-D` / `-F` data sources, `-i` interval, `-n` count, `-d` delay
+  - CURVE encryption via `SERVER_KEY` / `SERVER_PUBLIC` + `SERVER_SECRET`
+    env vars (requires `omq-curve`)
+  - `--identity` / `--target` for DEALER/ROUTER patterns
+  - `tcp://:PORT` shorthand for `tcp://*:PORT` (no shell glob issues)
+  - 22 system tests via `rake test:cli`
+
 ## 0.2.2 — 2026-03-26
 
 ### Added

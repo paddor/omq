@@ -8,4 +8,9 @@ Rake::TestTask.new(:test) do |t|
   t.test_files = FileList["test/**/*_test.rb"]
 end
 
+desc "Run omqcat CLI tests"
+task "test:cli" do
+  sh "sh test/omqcat/system_test.sh"
+end
+
 task default: :test

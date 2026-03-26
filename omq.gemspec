@@ -15,7 +15,9 @@ Gem::Specification.new do |s|
 
   s.required_ruby_version = ">= 3.3"
 
-  s.files = Dir["lib/**/*.rb", "README.md", "LICENSE", "CHANGELOG.md"]
+  s.files      = Dir["lib/**/*.rb", "exe/*", "README.md", "LICENSE", "CHANGELOG.md"]
+  s.bindir     = "exe"
+  s.executables = ["omqcat"]
 
   s.add_dependency "async", "~> 2"
   s.add_dependency "io-stream", "~> 0.11"
