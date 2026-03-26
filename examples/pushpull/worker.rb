@@ -3,12 +3,12 @@
 require_relative "../../lib/omq"
 require "async"
 
-endpoint = ARGV[0] || "tcp://localhost:5557"
+endpoint = ARGV[0] || "tcp://*:5557"
 id       = ARGV[1] || $$
 
 Async do
   pull = OMQ::PULL.new(endpoint)
-  puts "Worker #{id} connected to #{endpoint.delete_prefix(">")} — waiting for tasks ..."
+  puts "Worker #{id} on #{pull.last_endpoint || endpoint.delete_prefix(">")} — waiting for tasks ..."
 
   loop do
     msg = pull.receive
