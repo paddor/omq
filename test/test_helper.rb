@@ -8,3 +8,4 @@ require "async"
 # that are expected during protocol-error and disconnect tests).
 require "console"
 Console.logger = Console::Logger.new(Console::Output::Null.new)
+Warning[:experimental] = false

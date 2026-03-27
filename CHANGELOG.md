@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 — 2026-03-26
+
+### Improved
+
+- Hide the warning about the experimental `IO::Buffer` (used by io-stream)
+
 ## 0.3.1 — 2026-03-26
 
 ### Improved
