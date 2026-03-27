@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.5.0 — 2026-03-28
+
+### Added
+
+- **Draft socket types** (RFCs 41, 48, 49, 51, 52):
+  - `CLIENT`/`SERVER` — thread-safe REQ/REP without envelope, 4-byte routing IDs
+  - `RADIO`/`DISH` — group-based pub/sub with exact match, JOIN/LEAVE commands.
+    `radio.publish(group, body)`, `radio.send(body, group:)`, `radio << [group, body]`
+  - `SCATTER`/`GATHER` — thread-safe PUSH/PULL
+  - `PEER` — bidirectional multi-peer with 4-byte routing IDs
+  - `CHANNEL` — thread-safe PAIR
+- All draft types enforce single-frame messages (no multipart)
+- Reconnect-after-restart tests for all 10 socket type pairings
+
+### Fixed
+
+- **PUSH/SCATTER silently wrote to dead peers** — write-only sockets had
+  no recv pump to detect peer disconnection. Writes succeeded because the
+  kernel send buffer absorbed the data, preventing reconnect from
+  triggering. Added background monitor task per connection.
+- **PAIR/CHANNEL stale send pump after reconnect** — old send pump kept
+  its captured connection reference and raced with the new send pump,
+  sending to the dead connection. Now stopped in `connection_removed`.
+
 ## 0.4.2 — 2026-03-27
 
 ### Fixed
