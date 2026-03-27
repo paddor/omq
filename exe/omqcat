@@ -30,7 +30,7 @@ opts = {
   identity:     nil,
   target:       nil,
   interval:     nil,
-  count:        0,
+  count:        nil,
   delay:        nil,
   recv_timeout: nil,
   send_timeout: nil,
@@ -48,7 +48,8 @@ parser = OptionParser.new do |o|
   o.on("-c", "--connect URL", "Connect to endpoint (repeatable)")   { |v| opts[:connects] << v }
   o.on("-b", "--bind URL",    "Bind to endpoint (repeatable)")      { |v| opts[:binds] << v }
 
-  o.separator "\nData source:"
+  o.separator "\nData source (REP: reply source):"
+  o.on(      "--echo",        "Echo received messages back (REP)")   { opts[:echo] = true }
   o.on("-D", "--data DATA",   "Message data (literal string)")      { |v| opts[:data] = v }
   o.on("-F", "--file FILE",   "Read message from file (- = stdin)") { |v| opts[:file] = v }
 
@@ -79,6 +80,11 @@ parser = OptionParser.new do |o|
   o.separator "\nProcessing:"
   o.on("-e", "--eval EXPR", "Eval Ruby for each message ($F = parts)") { |v| opts[:expr] = v }
   o.on("-r", "--require LIB", "Require a Ruby library (repeatable)")   { |v| require v }
+
+  o.separator "\nCURVE encryption (requires omq-curve gem):"
+  o.on("--curve-server",         "Enable CURVE as server (generates keypair)") { opts[:curve_server] = true }
+  o.on("--curve-server-key KEY", "Enable CURVE as client (server's Z85 public key)") { |v| opts[:curve_server_key] = v }
+  o.separator "  Env vars: OMQ_SERVER_KEY (client), OMQ_SERVER_PUBLIC + OMQ_SERVER_SECRET (server)"
 
   o.separator "\nOther:"
   o.on("-v", "--verbose", "Print connection events to stderr") { opts[:verbose] = true }
@@ -216,21 +222,31 @@ end
 
 # ── CURVE setup ─────────────────────────────────────────────────────
 
-def setup_curve(sock)
-  if ENV["SERVER_KEY"]
+def setup_curve(sock, opts)
+  server_key_z85 = opts[:curve_server_key] || ENV["OMQ_SERVER_KEY"]
+  server_mode    = opts[:curve_server] || (ENV["OMQ_SERVER_PUBLIC"] && ENV["OMQ_SERVER_SECRET"])
+
+  if server_key_z85
+    # Client mode
     require "omq/curve"
-    server_key = OMQ::Z85.decode(ENV["SERVER_KEY"])
+    server_key = OMQ::Z85.decode(server_key_z85)
     client_key = RbNaCl::PrivateKey.generate
     sock.mechanism = OMQ::Curve.client(
       client_key.public_key.to_s, client_key.to_s, server_key: server_key
     )
-    $stderr.puts "CURVE client mode" if $VERBOSE
-  elsif ENV["SERVER_PUBLIC"] && ENV["SERVER_SECRET"]
+  elsif server_mode
+    # Server mode
     require "omq/curve"
-    server_pub = OMQ::Z85.decode(ENV["SERVER_PUBLIC"])
-    server_sec = OMQ::Z85.decode(ENV["SERVER_SECRET"])
+    if ENV["OMQ_SERVER_PUBLIC"] && ENV["OMQ_SERVER_SECRET"]
+      server_pub = OMQ::Z85.decode(ENV["OMQ_SERVER_PUBLIC"])
+      server_sec = OMQ::Z85.decode(ENV["OMQ_SERVER_SECRET"])
+    else
+      key        = RbNaCl::PrivateKey.generate
+      server_pub = key.public_key.to_s
+      server_sec = key.to_s
+    end
     sock.mechanism = OMQ::Curve.server(server_pub, server_sec)
-    $stderr.puts "SERVER_KEY=#{ENV["SERVER_PUBLIC"]}"
+    $stderr.puts "OMQ_SERVER_KEY='#{OMQ::Z85.encode(server_pub)}'"
   end
 rescue LoadError
   abort "omq-curve gem required for CURVE encryption: gem install omq-curve"
@@ -281,6 +297,10 @@ def eval_expr(parts, sock, opts)
   end
 end
 
+def count_reached?(i, opts)
+  opts[:count] && opts[:count] > 0 && i >= opts[:count]
+end
+
 def output(parts, opts)
   return if opts[:quiet]
   parts = [""] if parts.nil?
@@ -304,7 +324,7 @@ def send_loop(sock, opts)
       sleep(opts[:delay]) if opts[:delay] && i == 0
       send_msg(sock, parts, opts) if parts
       i += 1
-      break if opts[:count] > 0 && i >= opts[:count]
+      break if count_reached?(i, opts)
       if opts[:interval]
         sleep(opts[:interval])
       else
@@ -319,7 +339,7 @@ def send_loop(sock, opts)
       sleep(opts[:delay]) if opts[:delay] && i == 0
       send_msg(sock, parts, opts) if parts
       i += 1
-      break if opts[:count] > 0 && i >= opts[:count]
+      break if count_reached?(i, opts)
       sleep(opts[:interval]) if opts[:interval]
     end
   end
@@ -332,7 +352,7 @@ def recv_loop(sock, opts)
     parts = eval_expr(parts, sock, opts)
     output(parts, opts)
     i += 1
-    break if opts[:count] > 0 && i >= opts[:count]
+    break if count_reached?(i, opts)
   end
 end
 
@@ -347,7 +367,7 @@ def req_loop(sock, opts)
     reply = eval_expr(reply, sock, opts)
     output(reply, opts)
     i += 1
-    break if opts[:count] > 0 && i >= opts[:count]
+    break if count_reached?(i, opts)
     if opts[:interval]
       sleep(opts[:interval])
     elsif !opts[:data] && !opts[:file]
@@ -366,13 +386,19 @@ def rep_loop(sock, opts)
       reply = eval_expr(msg, sock, opts)
       output(reply, opts)
       send_msg(sock, reply || [""], opts)
-    else
+    elsif opts[:echo]
       output(msg, opts)
-      reply = opts[:data] ? parse_input(opts[:data] + "\n", opts[:format]) : msg
+      send_msg(sock, msg, opts)
+    elsif opts[:data] || opts[:file] || !$stdin.tty?
+      reply = read_next(opts)
+      break unless reply  # EOF on stdin/-F
+      output(msg, opts)
       send_msg(sock, reply, opts)
+    else
+      abort "REP needs a reply source: --echo, --data, --file, -e, or stdin pipe"
     end
     i += 1
-    break if opts[:count] > 0 && i >= opts[:count]
+    break if count_reached?(i, opts)
   end
 end
 
@@ -384,7 +410,7 @@ def pair_loop(sock, opts, task)
       parts = eval_expr(parts, sock, opts)
       output(parts, opts)
       i += 1
-      break if opts[:count] > 0 && i >= opts[:count]
+      break if count_reached?(i, opts)
     end
   end
 
@@ -397,13 +423,13 @@ def pair_loop(sock, opts, task)
       sleep(opts[:delay]) if opts[:delay] && i == 0
       send_msg(sock, parts, opts) if parts
       i += 1
-      break if opts[:count] > 0 && i >= opts[:count]
+      break if count_reached?(i, opts)
       break if (opts[:data] || opts[:file]) && !opts[:interval]
       sleep(opts[:interval]) if opts[:interval]
     end
   end
 
-  if opts[:count] > 0
+  if opts[:count] && opts[:count] > 0
     receiver.wait
     sender.stop
   else
@@ -425,7 +451,7 @@ def router_loop(sock, opts, task)
       result = eval_expr([id_display, *parts], sock, opts)
       output(result, opts)
       i += 1
-      break if opts[:count] > 0 && i >= opts[:count]
+      break if count_reached?(i, opts)
     end
   end
 
@@ -440,7 +466,7 @@ def router_loop(sock, opts, task)
       end
       send_msg(sock, parts, opts)
       i += 1
-      break if opts[:count] > 0 && i >= opts[:count]
+      break if count_reached?(i, opts)
       break if (opts[:data] || opts[:file]) && !opts[:interval]
       sleep(opts[:interval]) if opts[:interval]
     end
@@ -448,7 +474,7 @@ def router_loop(sock, opts, task)
 
   # If count is set, the receiver will exit when count is reached.
   # Otherwise, wait for Ctrl-C.
-  if opts[:count] > 0
+  if opts[:count] && opts[:count] > 0
     receiver.wait
     sender.stop
   else
@@ -473,7 +499,7 @@ Async do |task|
   sock.send_timeout = opts[:send_timeout] if opts[:send_timeout]
   sock.identity     = opts[:identity]     if opts[:identity]
 
-  setup_curve(sock)
+  setup_curve(sock, opts)
 
   opts[:binds].each do |url|
     sock.bind(url)

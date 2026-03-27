@@ -51,11 +51,11 @@ check "rep receives request" "hello" "$REP_OUT"
 
 echo "REP echo:"
 P=$(next_port)
-run_bg $OMQCAT rep -b tcp://:$P -n 1 > $TMPDIR/rep_echo_out.txt 2>/dev/null
+run_bg $OMQCAT rep -b tcp://:$P --echo -n 1 > $TMPDIR/rep_echo_out.txt 2>/dev/null
 sleep 0.5
 REQ_OUT=$(timeout 5 sh -c "echo 'echo me' | $OMQCAT req -c tcp://localhost:$P -d 0.3 -n 1 2>/dev/null")
 wait 2>/dev/null
-check "rep echoes back without -D" "echo me" "$REQ_OUT"
+check "rep --echo echoes back" "echo me" "$REQ_OUT"
 
 # ── PUSH/PULL ───────────────────────────────────────────────────────
 
@@ -273,10 +273,10 @@ if ruby -Ilib -e 'require "omq/curve"' 2>/dev/null; then
   CURVE_PUB=$(echo "$CURVE_KEYS" | head -1)
   CURVE_SEC=$(echo "$CURVE_KEYS" | tail -1)
 
-  SERVER_PUBLIC=$CURVE_PUB SERVER_SECRET=$CURVE_SEC \
+  OMQ_SERVER_PUBLIC=$CURVE_PUB OMQ_SERVER_SECRET=$CURVE_SEC \
     run_bg $OMQCAT rep -b tcp://:$P -D "secret" -n 1 > $TMPDIR/curve_rep_out.txt 2>/dev/null
   sleep 0.5
-  CURVE_REQ_OUT=$(SERVER_KEY=$CURVE_PUB \
+  CURVE_REQ_OUT=$(OMQ_SERVER_KEY=$CURVE_PUB \
     timeout 5 $OMQCAT req -c tcp://localhost:$P -D "classified" -d 0.5 -n 1 2>/dev/null)
   wait 2>/dev/null
   CURVE_REP_OUT=$(cat $TMPDIR/curve_rep_out.txt)
