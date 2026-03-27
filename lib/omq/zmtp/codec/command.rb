@@ -101,6 +101,24 @@ module OMQ
           new("CANCEL", prefix.b)
         end
 
+        # Builds a JOIN command (RADIO/DISH group subscription).
+        #
+        # @param group [String] group name
+        # @return [Command]
+        #
+        def self.join(group)
+          new("JOIN", group.b)
+        end
+
+        # Builds a LEAVE command (RADIO/DISH group unsubscription).
+        #
+        # @param group [String] group name
+        # @return [Command]
+        #
+        def self.leave(group)
+          new("LEAVE", group.b)
+        end
+
         # Builds a PING command.
         #
         # @param ttl [Numeric] time-to-live in seconds (sent as deciseconds)

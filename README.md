@@ -18,7 +18,7 @@ Pure Ruby implementation of the [ZMTP 3.1](https://rfc.zeromq.org/spec/23/) wire
 ## Highlights
 
 - **Pure Ruby** — no C extensions, no FFI, no libzmq/libczmq dependency
-- **All socket types** — req/rep, pub/sub, push/pull, dealer/router, xpub/xsub, pair
+- **All socket types** — req/rep, pub/sub, push/pull, dealer/router, xpub/xsub, pair + draft types (client/server, radio/dish, scatter/gather, peer, channel)
 - **Async-native** — built on [Async](https://github.com/socketry/async) fibers, also works with plain threads
 - **Ruby-idiomatic API** — messages as `Array<String>`, errors as exceptions, timeouts as `IO::TimeoutError`
 - **All transports** — tcp, ipc, inproc
@@ -112,6 +112,11 @@ end
 | Pipeline | `PUSH`, `PULL` | unidirectional |
 | Routing | `DEALER`, `ROUTER` | bidirectional |
 | Exclusive pair | `PAIR` | bidirectional |
+| Client/Server | `CLIENT`, `SERVER` | bidirectional |
+| Group messaging | `RADIO`, `DISH` | unidirectional |
+| Pipeline (draft) | `SCATTER`, `GATHER` | unidirectional |
+| Peer-to-peer | `PEER` | bidirectional |
+| Channel (draft) | `CHANNEL` | bidirectional |
 
 All classes live under `OMQ::`. For the purists, `ØMQ` is an alias:
 

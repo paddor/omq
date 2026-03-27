@@ -14,8 +14,16 @@ module OMQ
       SUB:    %i[PUB XPUB].freeze,
       XPUB:   %i[SUB XSUB].freeze,
       XSUB:   %i[PUB XPUB].freeze,
-      PUSH:   %i[PULL].freeze,
-      PULL:   %i[PUSH].freeze,
+      PUSH:    %i[PULL].freeze,
+      PULL:    %i[PUSH].freeze,
+      CLIENT:  %i[SERVER].freeze,
+      SERVER:  %i[CLIENT].freeze,
+      RADIO:   %i[DISH].freeze,
+      DISH:    %i[RADIO].freeze,
+      SCATTER: %i[GATHER].freeze,
+      GATHER:  %i[SCATTER].freeze,
+      PEER:    %i[PEER].freeze,
+      CHANNEL: %i[CHANNEL].freeze,
     }.freeze
   end
 end

@@ -1,0 +1,26 @@
+# frozen_string_literal: true
+
+module OMQ
+  class PEER < Socket
+    include ZMTP::Readable
+    include ZMTP::Writable
+    include ZMTP::SingleFrame
+
+    def initialize(endpoints = nil, linger: 0)
+      _init_engine(:PEER, linger: linger)
+      _attach(endpoints, default: :connect)
+    end
+
+    # Sends a message to a specific peer by routing ID.
+    #
+    # @param routing_id [String] 4-byte routing ID
+    # @param message [String] message body
+    # @return [self]
+    #
+    def send_to(routing_id, message)
+      parts = [routing_id.b.freeze, message.b.freeze]
+      with_timeout(@options.write_timeout) { @engine.enqueue_send(parts) }
+      self
+    end
+  end
+end

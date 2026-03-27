@@ -17,7 +17,7 @@ module OMQ
       module Inproc
         # Socket types that exchange commands (SUBSCRIBE/CANCEL) over inproc.
         #
-        COMMAND_TYPES = %i[PUB SUB XPUB XSUB].freeze
+        COMMAND_TYPES = %i[PUB SUB XPUB XSUB RADIO DISH].freeze
 
         # Global registry of bound inproc endpoints.
         #

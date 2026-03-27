@@ -28,8 +28,16 @@ module OMQ
         when :SUB    then Sub
         when :XPUB   then XPub
         when :XSUB   then XSub
-        when :PUSH   then Push
-        when :PULL   then Pull
+        when :PUSH    then Push
+        when :PULL    then Pull
+        when :CLIENT  then Client
+        when :SERVER  then Server
+        when :RADIO   then Radio
+        when :DISH    then Dish
+        when :SCATTER then Scatter
+        when :GATHER  then Gather
+        when :PEER    then Peer
+        when :CHANNEL then Channel
         else raise ArgumentError, "unknown socket type: #{socket_type}"
         end
       end
