@@ -3,12 +3,9 @@
 module OMQ
   module ZMTP
     module Routing
-      # PAIR socket routing: exclusive 1-to-1 bidirectional.
+      # CHANNEL socket routing: exclusive 1-to-1 bidirectional.
       #
-      # Only one peer connection is allowed. Messages flow through
-      # internal send/recv queues backed by Async::LimitedQueue.
-      #
-      class Pair
+      class Channel
 
         # @param engine [Engine]
         #
@@ -28,7 +25,7 @@ module OMQ
         # @raise [RuntimeError] if a connection already exists
         #
         def connection_added(connection)
-          raise "PAIR allows only one peer" if @connection
+          raise "CHANNEL allows only one peer" if @connection
           @connection = connection
           task = @engine.start_recv_pump(connection, @recv_queue)
           @tasks << task if task
