@@ -52,6 +52,12 @@ module OMQ
         # @param parts [Array<String>]
         #
         def enqueue(parts)
+          if @engine.options.router_mandatory?
+            identity = parts.first
+            unless @connections_by_identity[identity]
+              raise SocketError, "no route to identity #{identity.inspect}"
+            end
+          end
           @send_queue.enqueue(parts)
         end
 
@@ -70,12 +76,7 @@ module OMQ
               identity = parts.first
               conn = @connections_by_identity[identity]
 
-              unless conn
-                if @engine.options.router_mandatory?
-                  raise SocketError, "no route to identity #{identity.inspect}"
-                end
-                next # silently drop
-              end
+              next unless conn # silently drop (peer may have disconnected)
 
               # Send everything after the identity frame
               conn.send_message(parts[1..])
