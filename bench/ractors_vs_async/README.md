@@ -9,23 +9,23 @@ OMQ works with both Async fibers (single-threaded concurrency) and Ractors
 producer → PUSH/PULL → 4 workers → PUSH/PULL → collector
 ```
 
-Each worker receives a 64 B message, computes `fib(28)` (~10 ms of CPU
+Each worker receives a 64 B message, computes `fib(28)` (~2 ms of CPU
 work per message), and forwards the result. The producer fires all
 messages at once; the collector waits for all of them.
 
 - **Async**: 4 fibers in one thread, connected via IPC (unix sockets)
 - **Ractors**: 4 Ractors in separate threads, connected via IPC (abstract namespace)
 
-## Results (Ruby 4.0.1 +YJIT, Linux x86_64)
+## Results (Ruby 4.0.2 +YJIT, Linux x86_64)
 
-### With CPU work (~10 ms per message)
+### With CPU work (~2 ms per message)
 
 | | Workers | Throughput | Total time | Speedup |
 |---|---------|-----------|-----------|---------|
-| Async (1 thread) | 4 fibers | 111 msg/s | 1806 ms | 1.0x |
-| Ractors (4 threads) | 4 Ractors | 349 msg/s | 573 ms | **3.2x** |
+| Async (1 thread) | 4 fibers | 108 msg/s | 9.3s | 1.0x |
+| Ractors (4 threads) | 4 Ractors | 286 msg/s | 3.5s | **2.7x** |
 
-Nearly linear scaling: 4 cores → 3.2x speedup (the remainder is
+Near-linear scaling: 4 cores → 2.7x speedup (the remainder is
 transport overhead).
 
 ### Without CPU work (pure forwarding)

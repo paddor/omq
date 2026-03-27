@@ -23,7 +23,7 @@ require "console"
 Console.logger = Console::Logger.new(Console::Output::Null.new)
 
 N_WORKERS  = 4
-N_MESSAGES = 200
+N_MESSAGES = 1000
 
 def fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2)
 
@@ -41,8 +41,11 @@ when "async"
     work_addr   = "ipc:///tmp/omq_bench_work_#{$$}.sock"
     result_addr = "ipc:///tmp/omq_bench_result_#{$$}.sock"
 
+    producer  = OMQ::PUSH.bind(work_addr)
+    collector = OMQ::PULL.bind(result_addr)
+
     # Workers
-    N_WORKERS.times do
+    workers = N_WORKERS.times.map do
       task.async do
         pull = OMQ::PULL.connect(work_addr)
         push = OMQ::PUSH.connect(result_addr)
@@ -55,9 +58,6 @@ when "async"
         pull&.close; push&.close
       end
     end
-
-    producer  = OMQ::PUSH.bind(work_addr)
-    collector = OMQ::PULL.bind(result_addr)
 
     # Warm up
     20.times { producer << PAYLOAD; collector.receive }
@@ -73,6 +73,7 @@ when "async"
 
     puts "async  (ipc, 1 thread):  %7.1f msg/s  (%5.0f ms)" % [rate, elapsed * 1000]
   ensure
+    workers&.each(&:stop)
     producer&.close; collector&.close
   end
 
@@ -81,28 +82,30 @@ when "ractors"
   work_addr   = "ipc://@#{tag}_work"
   result_addr = "ipc://@#{tag}_result"
 
-  N_WORKERS.times do |i|
-    Ractor.new(work_addr, result_addr) do |wa, ra|
-      Console.logger = Console::Logger.new(Console::Output::Null.new)
-      w = Module.new { module_function; def fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2) }
-      Async do
-        pull = OMQ::PULL.connect(wa)
-        push = OMQ::PUSH.connect(ra)
-        loop do
-          msg = pull.receive
-          w.fib(28)
-          push << msg
-        end
-      ensure
-        pull&.close; push&.close
-      end
-    end
-  end
-
   Async do |task|
+    # Bind first so workers can connect immediately
     producer  = OMQ::PUSH.bind(work_addr)
     collector = OMQ::PULL.bind(result_addr)
-    sleep 0.5
+
+    workers = N_WORKERS.times.map do |i|
+      Ractor.new(work_addr, result_addr) do |wa, ra|
+        Console.logger = Console::Logger.new(Console::Output::Null.new)
+        w = Module.new { module_function; def fib(n) = n < 2 ? n : fib(n - 1) + fib(n - 2) }
+        Async do
+          pull = OMQ::PULL.connect(wa)
+          push = OMQ::PUSH.connect(ra)
+          loop do
+            msg = pull.receive
+            w.fib(28)
+            push << msg
+          end
+        ensure
+          pull&.close; push&.close
+        end
+      end
+    end
+
+    sleep 0.3 # let workers connect
 
     # Warm up
     20.times { producer << PAYLOAD; collector.receive }
