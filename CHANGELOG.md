@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0 — 2026-03-27
+
+### Added (omqcat)
+
+- `--curve-server` flag — generates ephemeral keypair, prints
+  `OMQ_SERVER_KEY=...` to stderr for easy copy-paste
+- `--curve-server-key KEY` flag — CURVE client mode from the CLI
+- `--echo` flag for REP — explicit echo mode
+- REP reads stdin/`-F` as reply source (one line per reply, exits at EOF)
+- REP without a reply source now aborts with a helpful error message
+
+### Changed
+
+- CURVE env vars renamed: `OMQ_SERVER_KEY`, `OMQ_SERVER_PUBLIC`,
+  `OMQ_SERVER_SECRET` (was `SERVER_KEY`, `SERVER_PUBLIC`, `SERVER_SECRET`)
+- REP with `--echo`/`-D`/`-e` serves forever by default (like a server).
+  Use `-n 1` for one-shot, `-n` to limit exchanges. Stdin/`-F` replies
+  naturally terminate at EOF.
+
 ## 0.3.2 — 2026-03-26
 
 ### Improved
