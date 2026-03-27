@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.1 — 2026-03-27
+
+### Improved
+
+- Explicit flush after `send_message`/`send_command` instead of
+  `minimum_write_size: 0` workaround — enables write buffering
+  (multi-frame messages coalesced into fewer syscalls).
+  **+68% inproc throughput** (145k → 244k msg/s),
+  **-40% inproc latency** (15 → 9 µs)
+
+### Fixed
+
+- Require `async ~> 2.38` for `Promise#wait?` (was `~> 2`)
+
 ## 0.4.0 — 2026-03-27
 
 ### Added (omqcat)
