@@ -19,6 +19,6 @@ Gem::Specification.new do |s|
   s.bindir     = "exe"
   s.executables = ["omqcat"]
 
-  s.add_dependency "async", "~> 2"
+  s.add_dependency "async", "~> 2.38"
   s.add_dependency "io-stream", "~> 0.11"
 end
