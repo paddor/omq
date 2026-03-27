@@ -88,4 +88,25 @@ describe "max_message_size" do
       rep&.close
     end
   end
+
+  it "rejects when one frame in a multi-frame message exceeds limit" do
+    Async do
+      rep = OMQ::REP.new(nil, linger: 0)
+      rep.max_message_size = 50
+      rep.bind("tcp://127.0.0.1:0")
+      port = rep.last_tcp_port
+
+      req = OMQ::REQ.new(nil, linger: 0)
+      req.connect("tcp://127.0.0.1:#{port}")
+
+      # First frame ok, second exceeds limit
+      req.send(["small", "x" * 100])
+
+      rep.read_timeout = 0.1
+      assert_raises(IO::TimeoutError) { rep.receive }
+    ensure
+      req&.close
+      rep&.close
+    end
+  end
 end

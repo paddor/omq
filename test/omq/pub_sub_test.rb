@@ -118,4 +118,41 @@ describe "XPUB/XSUB" do
       xpub&.close
     end
   end
+
+  it "XPUB receives subscription notifications over TCP" do
+    Async do
+      xpub = OMQ::XPUB.bind("tcp://127.0.0.1:0")
+      port = xpub.last_tcp_port
+
+      sub = OMQ::SUB.new(nil, linger: 0, prefix: nil)
+      sub.connect("tcp://127.0.0.1:#{port}")
+      sub.subscribe("topic.")
+
+      msg = xpub.receive
+      assert_equal 1, msg.size
+      assert_equal "\x01topic.".b, msg.first
+    ensure
+      sub&.close
+      xpub&.close
+    end
+  end
+
+  it "XPUB delivers filtered messages over TCP" do
+    Async do
+      xpub = OMQ::XPUB.bind("tcp://127.0.0.1:0")
+      port = xpub.last_tcp_port
+
+      sub = OMQ::SUB.connect("tcp://127.0.0.1:#{port}", prefix: "news.")
+
+      # Consume subscription notification
+      xpub.receive
+
+      xpub.send("news.headline")
+      msg = sub.receive
+      assert_equal ["news.headline"], msg
+    ensure
+      sub&.close
+      xpub&.close
+    end
+  end
 end

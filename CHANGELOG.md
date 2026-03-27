@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1 — 2026-03-28
+
+### Fixed
+
+- **`router_mandatory` SocketError raised in send pump** — the error
+  killed the pump fiber instead of reaching the caller. Now checked
+  synchronously in `enqueue` before queuing.
+
 ## 0.5.0 — 2026-03-28
 
 ### Added

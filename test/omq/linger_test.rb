@@ -48,4 +48,30 @@ describe "Linger" do
       pull&.close
     end
   end
+
+  it "actually delivers all messages before close completes over TCP" do
+    Async do
+      pull = OMQ::PULL.bind("tcp://127.0.0.1:0")
+      port = pull.last_tcp_port
+
+      push = OMQ::PUSH.new(nil, linger: 2)
+      push.connect("tcp://127.0.0.1:#{port}")
+      sleep 0.1
+
+      20.times { |i| push.send("drain-#{i}") }
+      push.close
+
+      received = []
+      20.times do
+        pull.recv_timeout = 1
+        received << pull.receive.first
+      end
+
+      assert_equal 20, received.size
+      assert_equal "drain-0", received.first
+      assert_equal "drain-19", received.last
+    ensure
+      pull&.close
+    end
+  end
 end

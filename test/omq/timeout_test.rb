@@ -79,3 +79,57 @@ describe "recv_timeout" do
     end
   end
 end
+
+describe "recv_timeout on other socket types" do
+  before { OMQ::ZMTP::Transport::Inproc.reset! }
+
+  it "works on SUB" do
+    Async do
+      pub = OMQ::PUB.bind("inproc://timeout-sub")
+      sub = OMQ::SUB.connect("inproc://timeout-sub", prefix: "")
+      sub.recv_timeout = 0.05
+
+      assert_raises(IO::TimeoutError) { sub.receive }
+    ensure
+      sub&.close
+      pub&.close
+    end
+  end
+
+  it "works on PAIR" do
+    Async do
+      a = OMQ::PAIR.bind("inproc://timeout-pair")
+      b = OMQ::PAIR.connect("inproc://timeout-pair")
+      b.recv_timeout = 0.05
+
+      assert_raises(IO::TimeoutError) { b.receive }
+    ensure
+      a&.close
+      b&.close
+    end
+  end
+
+  it "works on REP" do
+    Async do
+      rep = OMQ::REP.bind("inproc://timeout-rep")
+      rep.recv_timeout = 0.05
+
+      assert_raises(IO::TimeoutError) { rep.receive }
+    ensure
+      rep&.close
+    end
+  end
+
+  it "works on DEALER" do
+    Async do
+      router = OMQ::ROUTER.bind("inproc://timeout-dealer")
+      dealer = OMQ::DEALER.connect("inproc://timeout-dealer")
+      dealer.recv_timeout = 0.05
+
+      assert_raises(IO::TimeoutError) { dealer.receive }
+    ensure
+      dealer&.close
+      router&.close
+    end
+  end
+end
