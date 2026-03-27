@@ -5,16 +5,28 @@ OMQ works with both Async fibers (single-threaded concurrency) and Ractors
 
 ## Setup
 
-```
-producer → PUSH/PULL → 4 workers → PUSH/PULL → collector
-```
-
 Each worker receives a 64 B message, computes `fib(28)` (~2 ms of CPU
-work per message), and forwards the result. The producer fires all
-messages at once; the collector waits for all of them.
+work per message), and forwards the result.
 
-- **Async**: 4 fibers in one thread, connected via IPC (unix sockets)
-- **Ractors**: 4 Ractors in separate threads, connected via IPC (abstract namespace)
+Both use OMQ PUSH/PULL over IPC:
+
+```
+                   ┌────────┐
+             ┌────→│ worker │────┐
+             │     └────────┘    │
+┌────────┐   │     ┌────────┐    │   ┌───────────┐
+│producer│─PUSH─┬─→│ worker │─┬─PULL─│ collector │
+└────────┘   │  │  └────────┘ │  │   └───────────┘
+             │  │  ┌────────┐ │  │
+             │  └─→│ worker │─┘  │
+             │     └────────┘    │
+             │     ┌────────┐    │
+             └────→│ worker │────┘
+                   └────────┘
+```
+
+- **Async**: 4 fibers in one thread (sequential CPU, concurrent I/O)
+- **Ractors**: 4 Ractors in separate threads (parallel CPU)
 
 ## Results (Ruby 4.0.2 +YJIT, Linux x86_64)
 
