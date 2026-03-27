@@ -121,19 +121,19 @@ req = ØMQ::REQ.new(">tcp://localhost:5555")
 
 ## Performance
 
-Benchmarked with benchmark-ips on Linux x86_64 (Ruby 4.0.1 +YJIT):
+Benchmarked with benchmark-ips on Linux x86_64 (Ruby 4.0.2 +YJIT):
 
 #### Throughput (push/pull, 64 B messages)
 
 | inproc | ipc | tcp |
 |--------|-----|-----|
-| 184k/s | 35k/s | 18k/s |
+| 145k/s | 40k/s | 32k/s |
 
 #### Latency (req/rep roundtrip)
 
 | inproc | ipc | tcp |
 |--------|-----|-----|
-| 13 µs | 70 µs | 97 µs |
+| 15 µs | 62 µs | 88 µs |
 
 See [`bench/`](bench/) for full results and scripts.
 
@@ -142,7 +142,10 @@ See [`bench/`](bench/) for full results and scripts.
 `omqcat` is a command-line tool for sending and receiving messages on any OMQ socket. Like `nngcat` from libnng, but with Ruby superpowers.
 
 ```sh
-# Echo server in one line
+# Echo server
+omqcat rep -b tcp://:5555 --echo
+
+# Upcase server in one line
 omqcat rep -b tcp://:5555 -e '$F.map(&:upcase)'
 
 # Client
@@ -170,8 +173,10 @@ omqcat pull -b tcp://:5557 -J
 omqcat push -c tcp://remote:5557 -z < data.txt
 omqcat pull -b tcp://:5557 -z
 
-# CURVE encryption (auto-detected from env vars)
-SERVER_KEY=... omqcat req -c tcp://secure:5555 -D "secret"
+# CURVE encryption
+omqcat rep -b tcp://:5555 -D "secret" --curve-server
+# prints: OMQ_SERVER_KEY='...'
+omqcat req -c tcp://localhost:5555 --curve-server-key '...'
 ```
 
 The `-e` flag runs Ruby inside the socket instance — the full socket API (`self <<`, `send`, `subscribe`, ...) is available. Use `-r` to require gems:
