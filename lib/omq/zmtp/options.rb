@@ -25,12 +25,13 @@ module OMQ
         @heartbeat_ttl         = nil   # seconds, nil = use heartbeat_interval
         @heartbeat_timeout     = nil   # seconds, nil = use heartbeat_interval
         @max_message_size       = nil  # bytes, nil = unlimited
+        @conflate               = false
         @mechanism              = Mechanism::Null.new
       end
 
       attr_accessor :send_hwm,  :recv_hwm,
                     :linger,    :identity,
-                    :router_mandatory,
+                    :router_mandatory,  :conflate,
                     :read_timeout,          :write_timeout,
                     :reconnect_interval,
                     :heartbeat_interval,    :heartbeat_ttl,    :heartbeat_timeout,

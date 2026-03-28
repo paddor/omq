@@ -4,8 +4,8 @@ module OMQ
   class RADIO < Socket
     include ZMTP::Writable
 
-    def initialize(endpoints = nil, linger: 0)
-      _init_engine(:RADIO, linger: linger)
+    def initialize(endpoints = nil, linger: 0, conflate: false)
+      _init_engine(:RADIO, linger: linger, conflate: conflate)
       _attach(endpoints, default: :bind)
     end
 

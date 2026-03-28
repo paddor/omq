@@ -21,6 +21,7 @@ module OMQ
           @groups            = {} # connection => Set of joined groups
           @send_queue        = Async::LimitedQueue.new(engine.options.send_hwm)
           @send_pump_started = false
+          @conflate          = engine.options.conflate
           @tasks             = []
         end
 
@@ -73,17 +74,36 @@ module OMQ
               Routing.drain_send_queue(@send_queue, batch)
 
               written = Set.new
-              batch.each do |parts|
-                group = parts[0]
-                body  = parts[1] || "".b
-                @connections.each do |conn|
-                  next unless @groups[conn]&.include?(group)
+
+              if @conflate
+                # Keep only the last matching message per connection.
+                latest = {} # conn => [group, body]
+                batch.each do |parts|
+                  group = parts[0]
+                  body  = parts[1] || "".b
+                  @connections.each do |conn|
+                    next unless @groups[conn]&.include?(group)
+                    latest[conn] = [group, body]
+                  end
+                end
+                latest.each do |conn, msg|
                   begin
-                    # Wire format: group frame (MORE) + body frame
-                    conn.write_message([group, body])
+                    conn.write_message(msg)
                     written << conn
                   rescue *ZMTP::CONNECTION_LOST
-                    # connection dead — will be cleaned up
+                  end
+                end
+              else
+                batch.each do |parts|
+                  group = parts[0]
+                  body  = parts[1] || "".b
+                  @connections.each do |conn|
+                    next unless @groups[conn]&.include?(group)
+                    begin
+                      conn.write_message([group, body])
+                      written << conn
+                    rescue *ZMTP::CONNECTION_LOST
+                    end
                   end
                 end
               end
@@ -91,7 +111,6 @@ module OMQ
               written.each do |conn|
                 conn.flush
               rescue *ZMTP::CONNECTION_LOST
-                # connection dead — will be cleaned up
               end
             end
           end

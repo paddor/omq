@@ -19,6 +19,7 @@ module OMQ
           @subscriptions      = {} # connection => Set of prefixes
           @send_queue         = Async::LimitedQueue.new(engine.options.send_hwm)
           @send_pump_started  = false
+          @conflate           = engine.options.conflate
         end
 
         # @return [Boolean] whether the connection is subscribed to the topic
@@ -58,15 +59,34 @@ module OMQ
               Routing.drain_send_queue(@send_queue, batch)
 
               written = Set.new
-              batch.each do |parts|
-                topic = parts.first || "".b
-                @connections.each do |conn|
-                  next unless subscribed?(conn, topic)
+
+              if @conflate
+                # Keep only the last matching message per connection.
+                latest = {} # conn => parts
+                batch.each do |parts|
+                  topic = parts.first || "".b
+                  @connections.each do |conn|
+                    next unless subscribed?(conn, topic)
+                    latest[conn] = parts
+                  end
+                end
+                latest.each do |conn, parts|
                   begin
                     conn.write_message(parts)
                     written << conn
                   rescue *ZMTP::CONNECTION_LOST
-                    # connection dead — will be cleaned up
+                  end
+                end
+              else
+                batch.each do |parts|
+                  topic = parts.first || "".b
+                  @connections.each do |conn|
+                    next unless subscribed?(conn, topic)
+                    begin
+                      conn.write_message(parts)
+                      written << conn
+                    rescue *ZMTP::CONNECTION_LOST
+                    end
                   end
                 end
               end
@@ -74,7 +94,6 @@ module OMQ
               written.each do |conn|
                 conn.flush
               rescue *ZMTP::CONNECTION_LOST
-                # connection dead — will be cleaned up
               end
             end
           end
