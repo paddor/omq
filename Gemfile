@@ -7,4 +7,8 @@ gemspec
 gem "minitest"
 gem "rake"
 gem "benchmark-ips"
-gem "cztop", require: false
+
+if ENV["DEV_ENV"]
+  gem "cztop",     require: false
+  gem "zstd-ruby", require: false
+end
