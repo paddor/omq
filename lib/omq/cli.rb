@@ -1,0 +1,626 @@
+# frozen_string_literal: true
+
+require "optparse"
+
+module OMQ
+  module CLI
+    SOCKET_TYPE_NAMES = %w[
+      req rep pub sub push pull pair dealer router
+      client server radio dish scatter gather channel peer
+    ].freeze
+
+    module_function
+
+    def run(argv = ARGV)
+      opts = parse_options(argv)
+      validate!(opts)
+
+      require "omq"
+      require "async"
+      require "json"
+      require "console"
+
+      klass = resolve_socket_class(opts[:type_name])
+
+      opts[:has_msgpack] = begin; require "msgpack"; true; rescue LoadError; false; end
+      opts[:has_zstd]    = begin; require "zstd-ruby"; true; rescue LoadError; false; end
+
+      validate_gems!(opts)
+
+      trap("INT")  { Process.exit!(0) }
+      trap("TERM") { Process.exit!(0) }
+
+      Console.logger = Console::Logger.new(Console::Output::Null.new) unless opts[:verbose]
+
+      Async do |task|
+        runner = Runner.new(opts, klass)
+        runner.call(task)
+      end
+    end
+
+    def parse_options(argv)
+      opts = {
+        connects:     [],
+        binds:        [],
+        data:         nil,
+        file:         nil,
+        format:       :ascii,
+        subscribes:   [],
+        joins:        [],
+        group:        nil,
+        identity:     nil,
+        target:       nil,
+        interval:     nil,
+        count:        nil,
+        delay:        nil,
+        recv_timeout: nil,
+        send_timeout: nil,
+        compress:     false,
+        expr:         nil,
+        verbose:      false,
+        quiet:        false,
+      }
+
+      parser = OptionParser.new do |o|
+        o.banner = "Usage: omqcat TYPE [options]\n\n" \
+                   "Types: #{SOCKET_TYPE_NAMES.join(', ')}\n\n"
+
+        o.separator "Connection:"
+        o.on("-c", "--connect URL", "Connect to endpoint (repeatable)")   { |v| opts[:connects] << v }
+        o.on("-b", "--bind URL",    "Bind to endpoint (repeatable)")      { |v| opts[:binds] << v }
+
+        o.separator "\nData source (REP: reply source):"
+        o.on(      "--echo",        "Echo received messages back (REP)")   { opts[:echo] = true }
+        o.on("-D", "--data DATA",   "Message data (literal string)")      { |v| opts[:data] = v }
+        o.on("-F", "--file FILE",   "Read message from file (- = stdin)") { |v| opts[:file] = v }
+
+        o.separator "\nFormat (input + output):"
+        o.on("-A", "--ascii",   "Tab-separated frames, safe ASCII (default)") { opts[:format] = :ascii }
+        o.on("-Q", "--quoted",  "C-style quoted with escapes")                { opts[:format] = :quoted }
+        o.on(      "--raw",     "Raw binary, no framing")                     { opts[:format] = :raw }
+        o.on("-J", "--jsonl",   "JSON Lines (array of strings per line)")     { opts[:format] = :jsonl }
+        o.on(      "--msgpack", "MessagePack arrays (binary stream)")         { opts[:format] = :msgpack }
+
+        o.separator "\nSubscription/groups:"
+        o.on("-s", "--subscribe PREFIX", "Subscribe prefix (repeatable, SUB only)")  { |v| opts[:subscribes] << v }
+        o.on("-j", "--join GROUP",       "Join group (repeatable, DISH only)")       { |v| opts[:joins] << v }
+        o.on("-g", "--group GROUP",      "Publish group (RADIO only)")              { |v| opts[:group] = v }
+
+        o.separator "\nIdentity/routing:"
+        o.on("--identity ID", "Set socket identity (DEALER/ROUTER)")         { |v| opts[:identity] = v }
+        o.on("--target ID",   "Target peer identity (ROUTER/SERVER/PEER)")   { |v| opts[:target] = v }
+
+        o.separator "\nTiming:"
+        o.on("-i", "--interval SECS", Float, "Repeat interval")          { |v| opts[:interval] = v }
+        o.on("-n", "--count COUNT",   Integer, "Max iterations (0=inf)") { |v| opts[:count] = v }
+        o.on("-d", "--delay SECS",    Float, "Delay before first send")  { |v| opts[:delay] = v }
+        o.on("-t", "--recv-timeout SECS", Float, "Receive timeout")      { |v| opts[:recv_timeout] = v }
+        o.on(      "--send-timeout SECS", Float, "Send timeout")         { |v| opts[:send_timeout] = v }
+
+        o.separator "\nCompression:"
+        o.on("-z", "--compress", "Zstandard compression per frame") { opts[:compress] = true }
+
+        o.separator "\nProcessing:"
+        o.on("-e", "--eval EXPR", "Eval Ruby for each message ($F = parts)") { |v| opts[:expr] = v }
+        o.on("-r", "--require LIB", "Require a Ruby library (repeatable)")   { |v| require v }
+
+        o.separator "\nCURVE encryption (requires omq-curve gem):"
+        o.on("--curve-server",         "Enable CURVE as server (generates keypair)") { opts[:curve_server] = true }
+        o.on("--curve-server-key KEY", "Enable CURVE as client (server's Z85 public key)") { |v| opts[:curve_server_key] = v }
+        o.separator "  Env vars: OMQ_SERVER_KEY (client), OMQ_SERVER_PUBLIC + OMQ_SERVER_SECRET (server)"
+
+        o.separator "\nOther:"
+        o.on("-v", "--verbose", "Print connection events to stderr") { opts[:verbose] = true }
+        o.on("-q", "--quiet",   "Suppress message output")           { opts[:quiet] = true }
+        o.on("-V", "--version")                                      { require "omq"; puts "omqcat #{OMQ::VERSION}"; exit }
+        o.on("-h", "--help")                                         { puts o; exit }
+      end
+
+      begin
+        parser.parse!(argv)
+      rescue OptionParser::ParseError => e
+        abort e.message
+      end
+
+      type_name = argv.shift
+      abort parser.to_s unless type_name
+      unless SOCKET_TYPE_NAMES.include?(type_name.downcase)
+        abort "Unknown socket type: #{type_name}. Known: #{SOCKET_TYPE_NAMES.join(', ')}"
+      end
+
+      opts[:type_name] = type_name.downcase
+      opts
+    end
+
+    def resolve_socket_class(type_name)
+      OMQ.const_get(type_name.upcase)
+    end
+
+    def validate!(opts)
+      type_name = opts[:type_name]
+
+      abort "At least one --connect or --bind is required"   if opts[:connects].empty? && opts[:binds].empty?
+      abort "--data and --file are mutually exclusive"        if opts[:data] && opts[:file]
+      abort "--subscribe is only valid for SUB"               if !opts[:subscribes].empty? && type_name != "sub"
+      abort "--join is only valid for DISH"                   if !opts[:joins].empty? && type_name != "dish"
+      abort "--group is only valid for RADIO"                 if opts[:group] && type_name != "radio"
+      abort "--identity is only valid for DEALER/ROUTER"      if opts[:identity] && !%w[dealer router].include?(type_name)
+      abort "--target is only valid for ROUTER/SERVER/PEER"   if opts[:target] && !%w[router server peer].include?(type_name)
+
+      (opts[:connects] + opts[:binds]).each do |url|
+        abort "inproc not supported, use tcp:// or ipc://" if url.include?("inproc://")
+      end
+    end
+
+    def validate_gems!(opts)
+      abort "--msgpack requires the msgpack gem"    if opts[:format] == :msgpack && !opts[:has_msgpack]
+      abort "--compress requires the zstd-ruby gem" if opts[:compress] && !opts[:has_zstd]
+
+      if Runner::RECV_ONLY_NAMES.include?(opts[:type_name]) && (opts[:data] || opts[:file])
+        abort "--data/--file not valid for #{opts[:type_name]} (receive-only)"
+      end
+    end
+
+    # Runs the main event loop for a given socket type.
+    class Runner
+      SEND_ONLY_NAMES = %w[pub push scatter radio].freeze
+      RECV_ONLY_NAMES = %w[sub pull gather dish].freeze
+
+      def initialize(opts, klass)
+        @opts      = opts
+        @klass     = klass
+        @type_name = opts[:type_name]
+
+        # Normalize tcp://:PORT → tcp://*:PORT
+        normalize = ->(url) { url.sub(%r{\Atcp://:}, "tcp://*:") }
+        @opts[:connects].map!(&normalize)
+        @opts[:binds].map!(&normalize)
+      end
+
+      def call(task)
+        sock = @klass.new(nil, linger: 1)
+        sock.recv_timeout = @opts[:recv_timeout] if @opts[:recv_timeout]
+        sock.send_timeout = @opts[:send_timeout] if @opts[:send_timeout]
+        sock.identity     = @opts[:identity]     if @opts[:identity]
+
+        setup_curve(sock)
+
+        @opts[:binds].each do |url|
+          sock.bind(url)
+          log "Bound to #{sock.last_endpoint}" if @opts[:verbose]
+        end
+
+        @opts[:connects].each do |url|
+          sock.connect(url)
+          log "Connecting to #{url}" if @opts[:verbose]
+        end
+
+        setup_subscriptions(sock)
+
+        sleep(@opts[:delay]) if @opts[:delay] && recv_only?
+
+        run_loop(sock, task)
+      ensure
+        sock&.close
+      end
+
+      private
+
+      # ── Subscription / group setup ─────────────────────────────────
+
+      def send_only?
+        SEND_ONLY_NAMES.include?(@type_name)
+      end
+
+      def recv_only?
+        RECV_ONLY_NAMES.include?(@type_name)
+      end
+
+      def setup_subscriptions(sock)
+        case @type_name
+        when "sub"
+          prefixes = @opts[:subscribes].empty? ? [""] : @opts[:subscribes]
+          prefixes.each { |p| sock.subscribe(p) }
+        when "dish"
+          @opts[:joins].each { |g| sock.join(g) }
+        end
+      end
+
+      # ── Loop dispatch ──────────────────────────────────────────────
+
+      def run_loop(sock, task)
+        case @type_name
+        when "req"
+          req_loop(sock)
+        when "rep"
+          rep_loop(sock)
+        when "router"
+          router_loop(sock, task)
+        when "server", "peer"
+          server_loop(sock, task)
+        else
+          if send_only?
+            send_loop(sock)
+          elsif recv_only?
+            recv_loop(sock)
+          elsif @opts[:data] || @opts[:file]
+            send_loop(sock)
+          else
+            pair_loop(sock, task)
+          end
+        end
+      end
+
+      # ── Loop implementations ───────────────────────────────────────
+
+      def send_loop(sock)
+        i = 0
+        if @opts[:data] || @opts[:file]
+          loop do
+            parts = read_next
+            break unless parts
+            parts = eval_expr(parts, sock)
+            sleep(@opts[:delay]) if @opts[:delay] && i == 0
+            send_msg(sock, parts) if parts
+            i += 1
+            break if count_reached?(i)
+            if @opts[:interval]
+              sleep(@opts[:interval])
+            else
+              break
+            end
+          end
+        else
+          loop do
+            parts = read_next
+            break unless parts
+            parts = eval_expr(parts, sock)
+            sleep(@opts[:delay]) if @opts[:delay] && i == 0
+            send_msg(sock, parts) if parts
+            i += 1
+            break if count_reached?(i)
+            sleep(@opts[:interval]) if @opts[:interval]
+          end
+        end
+      end
+
+      def recv_loop(sock)
+        i = 0
+        loop do
+          parts = recv_msg(sock)
+          parts = eval_expr(parts, sock)
+          output(parts)
+          i += 1
+          break if count_reached?(i)
+        end
+      end
+
+      def req_loop(sock)
+        i = 0
+        loop do
+          parts = read_next
+          break unless parts
+          sleep(@opts[:delay]) if @opts[:delay] && i == 0
+          send_msg(sock, parts)
+          reply = recv_msg(sock)
+          reply = eval_expr(reply, sock)
+          output(reply)
+          i += 1
+          break if count_reached?(i)
+          if @opts[:interval]
+            sleep(@opts[:interval])
+          elsif !@opts[:data] && !@opts[:file]
+            next
+          else
+            break
+          end
+        end
+      end
+
+      def rep_loop(sock)
+        i = 0
+        loop do
+          msg = recv_msg(sock)
+          if @opts[:expr]
+            reply = eval_expr(msg, sock)
+            output(reply)
+            send_msg(sock, reply || [""])
+          elsif @opts[:echo]
+            output(msg)
+            send_msg(sock, msg)
+          elsif @opts[:data] || @opts[:file] || !$stdin.tty?
+            reply = read_next
+            break unless reply
+            output(msg)
+            send_msg(sock, reply)
+          else
+            abort "REP needs a reply source: --echo, --data, --file, -e, or stdin pipe"
+          end
+          i += 1
+          break if count_reached?(i)
+        end
+      end
+
+      def pair_loop(sock, task)
+        receiver = task.async do
+          i = 0
+          loop do
+            parts = recv_msg(sock)
+            parts = eval_expr(parts, sock)
+            output(parts)
+            i += 1
+            break if count_reached?(i)
+          end
+        end
+
+        sender = task.async do
+          i = 0
+          loop do
+            parts = read_next
+            break unless parts
+            parts = eval_expr(parts, sock)
+            sleep(@opts[:delay]) if @opts[:delay] && i == 0
+            send_msg(sock, parts) if parts
+            i += 1
+            break if count_reached?(i)
+            break if (@opts[:data] || @opts[:file]) && !@opts[:interval]
+            sleep(@opts[:interval]) if @opts[:interval]
+          end
+        end
+
+        wait_for_loops(receiver, sender)
+      end
+
+      def router_loop(sock, task)
+        receiver = task.async do
+          i = 0
+          loop do
+            parts = recv_msg(sock)
+            identity = parts.shift
+            parts.shift if parts.first == ""
+            result = eval_expr([display_routing_id(identity), *parts], sock)
+            output(result)
+            i += 1
+            break if count_reached?(i)
+          end
+        end
+
+        sender = task.async do
+          i = 0
+          loop do
+            parts = read_next
+            break unless parts
+            sleep(@opts[:delay]) if @opts[:delay] && i == 0
+            parts = [@opts[:target], "", *parts] if @opts[:target]
+            send_msg(sock, parts)
+            i += 1
+            break if count_reached?(i)
+            break if (@opts[:data] || @opts[:file]) && !@opts[:interval]
+            sleep(@opts[:interval]) if @opts[:interval]
+          end
+        end
+
+        wait_for_loops(receiver, sender)
+      end
+
+      def server_loop(sock, task)
+        receiver = task.async do
+          i = 0
+          loop do
+            parts = recv_msg(sock)
+            routing_id = parts.shift
+            result = eval_expr([display_routing_id(routing_id), *parts], sock)
+            output(result)
+            i += 1
+            break if count_reached?(i)
+          end
+        end
+
+        sender = task.async do
+          i = 0
+          loop do
+            parts = read_next
+            break unless parts
+            sleep(@opts[:delay]) if @opts[:delay] && i == 0
+            if @opts[:target]
+              parts = compress_frames(parts) if @opts[:compress]
+              sock.send_to(@opts[:target], parts.first || "")
+            else
+              send_msg(sock, parts)
+            end
+            i += 1
+            break if count_reached?(i)
+            break if (@opts[:data] || @opts[:file]) && !@opts[:interval]
+            sleep(@opts[:interval]) if @opts[:interval]
+          end
+        end
+
+        wait_for_loops(receiver, sender)
+      end
+
+      def wait_for_loops(receiver, sender)
+        if @opts[:count] && @opts[:count] > 0
+          receiver.wait
+          sender.stop
+        else
+          sender.wait
+          receiver.stop
+        end
+      end
+
+      # ── Message I/O ────────────────────────────────────────────────
+
+      def send_msg(sock, parts)
+        return if parts.empty?
+        parts = compress_frames(parts) if @opts[:compress]
+        if @type_name == "radio"
+          group = @opts[:group] || parts.shift
+          sock.publish(group, parts.first || "")
+        else
+          sock.send(parts)
+        end
+      end
+
+      def recv_msg(sock)
+        parts = sock.receive
+        parts = decompress_frames(parts) if @opts[:compress]
+        parts
+      end
+
+      def read_next
+        if @opts[:data]
+          parse_input(@opts[:data] + "\n", @opts[:format])
+        elsif @opts[:file]
+          @file_data ||= (@opts[:file] == "-" ? $stdin.read : File.read(@opts[:file])).chomp
+          parse_input(@file_data + "\n", @opts[:format])
+        elsif @opts[:format] == :msgpack
+          read_message_msgpack($stdin)
+        elsif @opts[:format] == :raw
+          data = $stdin.read
+          return nil if data.nil? || data.empty?
+          [data]
+        else
+          line = $stdin.gets
+          return nil if line.nil?
+          parse_input(line, @opts[:format])
+        end
+      end
+
+      # ── Format helpers ─────────────────────────────────────────────
+
+      def format_output(parts)
+        case @opts[:format]
+        when :ascii
+          parts.map { |p| p.b.gsub(/[^[:print:]\t]/, ".") }.join("\t") + "\n"
+        when :quoted
+          parts.map { |p|
+            p.b.gsub(/[^[:print:]]/) { |c|
+              case c
+              when "\n" then "\\n"
+              when "\r" then "\\r"
+              when "\t" then "\\t"
+              when "\\" then "\\\\"
+              else format("\\x%02x", c.ord)
+              end
+            }
+          }.join("\t") + "\n"
+        when :raw
+          parts.join
+        when :jsonl
+          JSON.generate(parts) + "\n"
+        when :msgpack
+          MessagePack.pack(parts)
+        end
+      end
+
+      def parse_input(line, fmt)
+        case fmt
+        when :ascii
+          line.chomp.split("\t")
+        when :quoted
+          line.chomp.split("\t").map { |p|
+            p.gsub(/\\(?:n|r|t|\\|x[0-9a-fA-F]{2})/) { |m|
+              case m
+              when "\\n" then "\n"
+              when "\\r" then "\r"
+              when "\\t" then "\t"
+              when "\\\\" then "\\"
+              else [m[2..].to_i(16)].pack("C")
+              end
+            }
+          }
+        when :raw
+          [line]
+        when :jsonl
+          arr = JSON.parse(line.chomp)
+          abort "JSON Lines input must be an array of strings" unless arr.is_a?(Array) && arr.all? { |e| e.is_a?(String) }
+          arr
+        end
+      end
+
+      def read_message_msgpack(io)
+        @msgpack_unpacker ||= MessagePack::Unpacker.new(io)
+        @msgpack_unpacker.read
+      rescue EOFError
+        nil
+      end
+
+      # ── Compression helpers ────────────────────────────────────────
+
+      def compress_frames(parts)
+        parts.map { |p| Zstd.compress(p) }
+      end
+
+      def decompress_frames(parts)
+        parts.map { |p| Zstd.decompress(p) }
+      end
+
+      # ── Display helpers ────────────────────────────────────────────
+
+      def display_routing_id(id)
+        if id.bytes.all? { |b| b >= 0x20 && b <= 0x7E }
+          id
+        else
+          OMQ::Z85.encode(id.ljust(((id.bytesize + 3) / 4) * 4, "\x00"))
+        end
+      end
+
+      def eval_expr(parts, sock)
+        return parts unless @opts[:expr]
+        $F = parts
+        result = sock.instance_eval(@opts[:expr], "-e") # rubocop:disable Security/Eval
+        case result
+        when nil    then nil
+        when Array  then result
+        when String then [result]
+        else             [result.to_s]
+        end
+      end
+
+      def count_reached?(i)
+        @opts[:count] && @opts[:count] > 0 && i >= @opts[:count]
+      end
+
+      def output(parts)
+        return if @opts[:quiet]
+        parts = [""] if parts.nil?
+        $stdout.write(format_output(parts))
+        $stdout.flush
+      end
+
+      def log(msg)
+        $stderr.puts(msg)
+      end
+
+      # ── CURVE setup ────────────────────────────────────────────────
+
+      def setup_curve(sock)
+        server_key_z85 = @opts[:curve_server_key] || ENV["OMQ_SERVER_KEY"]
+        server_mode    = @opts[:curve_server] || (ENV["OMQ_SERVER_PUBLIC"] && ENV["OMQ_SERVER_SECRET"])
+
+        if server_key_z85
+          require "omq/curve"
+          server_key = OMQ::Z85.decode(server_key_z85)
+          client_key = RbNaCl::PrivateKey.generate
+          sock.mechanism = OMQ::Curve.client(
+            client_key.public_key.to_s, client_key.to_s, server_key: server_key
+          )
+        elsif server_mode
+          require "omq/curve"
+          if ENV["OMQ_SERVER_PUBLIC"] && ENV["OMQ_SERVER_SECRET"]
+            server_pub = OMQ::Z85.decode(ENV["OMQ_SERVER_PUBLIC"])
+            server_sec = OMQ::Z85.decode(ENV["OMQ_SERVER_SECRET"])
+          else
+            key        = RbNaCl::PrivateKey.generate
+            server_pub = key.public_key.to_s
+            server_sec = key.to_s
+          end
+          sock.mechanism = OMQ::Curve.server(server_pub, server_sec)
+          $stderr.puts "OMQ_SERVER_KEY='#{OMQ::Z85.encode(server_pub)}'"
+        end
+      rescue LoadError
+        abort "omq-curve gem required for CURVE encryption: gem install omq-curve"
+      end
+    end
+  end
+end
