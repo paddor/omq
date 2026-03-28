@@ -116,6 +116,8 @@ module OMQ
         o.on("-q", "--quiet",   "Suppress message output")           { opts[:quiet] = true }
         o.on("-V", "--version")                                      { require "omq"; puts "omqcat #{OMQ::VERSION}"; exit }
         o.on("-h", "--help")                                         { puts o; exit }
+
+        o.separator "\nExit codes: 0 = success, 1 = error, 2 = timeout"
       end
 
       begin
