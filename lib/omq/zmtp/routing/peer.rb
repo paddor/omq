@@ -66,7 +66,7 @@ module OMQ
               batch = [@send_queue.dequeue]
               Routing.drain_send_queue(@send_queue, batch)
 
-              written = []
+              written = Set.new
               batch.each do |parts|
                 routing_id = parts.first
                 conn       = @connections_by_routing_id[routing_id]
@@ -78,8 +78,12 @@ module OMQ
                   # will be cleaned up
                 end
               end
-              written.uniq!
-              written.each { |conn| conn.flush rescue nil }
+
+              written.each do |conn|
+                conn.flush
+              rescue *ZMTP::CONNECTION_LOST
+                # will be cleaned up
+              end
             end
           end
         end

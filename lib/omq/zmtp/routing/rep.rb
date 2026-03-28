@@ -71,7 +71,7 @@ module OMQ
               batch = [@send_queue.dequeue]
               Routing.drain_send_queue(@send_queue, batch)
 
-              written = []
+              written = Set.new
               batch.each do |parts|
                 reply_info = @pending_replies.shift
                 next unless reply_info
@@ -83,8 +83,12 @@ module OMQ
                   # connection lost mid-write
                 end
               end
-              written.uniq!
-              written.each { |conn| conn.flush rescue nil }
+
+              written.each do |conn|
+                conn.flush
+              rescue *ZMTP::CONNECTION_LOST
+                # connection lost mid-flush
+              end
             end
           end
         end

@@ -76,7 +76,7 @@ module OMQ
         end
 
         def send_batch(batch)
-          written = []
+          written = Set.new
           batch.each_with_index do |parts, i|
             conn = next_connection
             begin
@@ -85,8 +85,11 @@ module OMQ
             rescue *ZMTP::CONNECTION_LOST
               @engine.connection_lost(conn)
               # Flush what we've written so far
-              written.uniq!
-              written.each { |c| c.flush rescue nil }
+              written.each do |c|
+                c.flush
+              rescue *ZMTP::CONNECTION_LOST
+                # will be cleaned up
+              end
               written.clear
               # Fall back to send_with_retry for this and remaining
               send_with_retry(parts)
@@ -94,8 +97,11 @@ module OMQ
               return
             end
           end
-          written.uniq!
-          written.each { |conn| conn.flush rescue nil }
+          written.each do |conn|
+            conn.flush
+          rescue *ZMTP::CONNECTION_LOST
+            # will be cleaned up
+          end
         end
       end
     end
