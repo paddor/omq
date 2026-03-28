@@ -7,3 +7,4 @@ gemspec
 gem "minitest"
 gem "rake"
 gem "benchmark-ips"
+gem "cztop", require: false

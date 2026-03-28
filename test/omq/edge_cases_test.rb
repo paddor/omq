@@ -1,0 +1,112 @@
+# frozen_string_literal: true
+
+require_relative "../test_helper"
+
+describe "Edge cases" do
+  before { OMQ::ZMTP::Transport::Inproc.reset! }
+
+  describe "large identity" do
+    it "DEALER with 255-byte identity connects to ROUTER" do
+      Async do
+        router = OMQ::ROUTER.bind("inproc://edge-bigid")
+        dealer = OMQ::DEALER.new
+        dealer.identity = "x" * 255
+        dealer.connect("inproc://edge-bigid")
+
+        dealer.send("hello")
+        msg = router.receive
+        assert_equal "x" * 255, msg[0]
+        assert_equal "hello", msg[1]
+      ensure
+        dealer&.close
+        router&.close
+      end
+    end
+  end
+
+  describe "rapid connect/disconnect cycles" do
+    it "survives 20 rapid cycles over inproc" do
+      Async do
+        pull = OMQ::PULL.bind("inproc://edge-rapid")
+
+        20.times do |i|
+          push = OMQ::PUSH.new(nil, linger: 1)
+          push.connect("inproc://edge-rapid")
+          push.send("msg-#{i}")
+          Async::Task.current.yield
+          push.close
+        end
+
+        received = 0
+        pull.recv_timeout = 0.2
+        loop do
+          pull.receive
+          received += 1
+        rescue IO::TimeoutError
+          break
+        end
+
+        assert_operator received, :>, 0, "expected at least some messages"
+      ensure
+        pull&.close
+      end
+    end
+
+    it "survives 10 rapid cycles over TCP" do
+      Async do
+        pull = OMQ::PULL.bind("tcp://127.0.0.1:0")
+        port = pull.last_tcp_port
+
+        10.times do |i|
+          push = OMQ::PUSH.new(nil, linger: 1)
+          push.connect("tcp://127.0.0.1:#{port}")
+          sleep 0.02
+          push.send("msg-#{i}")
+          push.close
+        end
+
+        received = 0
+        pull.recv_timeout = 0.5
+        loop do
+          pull.receive
+          received += 1
+        rescue IO::TimeoutError
+          break
+        end
+
+        assert_operator received, :>, 0, "expected at least some messages"
+      ensure
+        pull&.close
+      end
+    end
+  end
+
+  describe "bind to already-bound address" do
+    it "raises on duplicate TCP bind" do
+      Async do
+        rep1 = OMQ::REP.bind("tcp://127.0.0.1:0")
+        port = rep1.last_tcp_port
+
+        assert_raises(Errno::EADDRINUSE) do
+          rep2 = OMQ::REP.bind("tcp://127.0.0.1:#{port}")
+        end
+      ensure
+        rep1&.close
+        rep2&.close
+      end
+    end
+
+    it "raises on duplicate inproc bind" do
+      Async do
+        rep1 = OMQ::REP.bind("inproc://edge-dupbind")
+
+        assert_raises(RuntimeError, ArgumentError) do
+          rep2 = OMQ::REP.bind("inproc://edge-dupbind")
+        end
+      ensure
+        rep1&.close
+        rep2&.close
+      end
+    end
+  end
+end
