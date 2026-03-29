@@ -623,14 +623,14 @@ describe "extract_blocks" do
   end
 
   it "handles BEGIN only" do
-    expr, begin_body, end_body = @runner.send(:extract_blocks,
+    _, begin_body, end_body = @runner.send(:extract_blocks,
       'BEGIN{ @x = 1 } $F')
     assert_equal " @x = 1 ", begin_body
     assert_nil end_body
   end
 
   it "handles END only" do
-    expr, begin_body, end_body = @runner.send(:extract_blocks,
+    _, begin_body, end_body = @runner.send(:extract_blocks,
       '$F END{ puts "done" }')
     assert_nil begin_body
     assert_equal ' puts "done" ', end_body
