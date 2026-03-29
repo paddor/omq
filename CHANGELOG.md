@@ -14,7 +14,7 @@
   `Socket` for connection lifecycle tracking.
 - **`reconnect_enabled=`** — disable auto-reconnect per socket.
 - **Pipeline benchmark** — 4-worker fib pipeline via `omq` CLI
-  (`bench/omqcat/pipeline.sh`). ~300–1800 msg/s depending on N.
+  (`bench/cli/pipeline.sh`). ~300–1800 msg/s depending on N.
 - **DESIGN.md** — architecture overview covering task trees, send pump
   batching, ZMTP wire protocol, transports, and the fallacies of
   distributed computing.

@@ -55,7 +55,7 @@ Measured on Linux x86_64, Ruby 4.0.2 +YJIT (io_uring).
 ## Running
 
 ```sh
-sh bench/omqcat/throughput.sh [count]   # default: 10000
-sh bench/omqcat/latency.sh [count]      # default: 1000
-sh bench/omqcat/pipeline.sh [count]     # default: 1000
+sh bench/cli/throughput.sh [count]   # default: 10000
+sh bench/cli/latency.sh [count]      # default: 1000
+sh bench/cli/pipeline.sh [count]     # default: 1000
 ```
