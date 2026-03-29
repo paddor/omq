@@ -31,7 +31,9 @@ module OMQ
             accept_task = Reactor.spawn_pump(annotation: "ipc accept #{endpoint}") do
               loop do
                 client = server.accept
-                engine.handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: endpoint)
+                Async::Task.current.defer_stop do
+                  engine.handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: endpoint)
+                end
               end
             rescue IOError
               # server closed
@@ -85,12 +87,19 @@ module OMQ
           #
           attr_reader :endpoint
 
+
+          # @param endpoint [String] the IPC endpoint URI
+          # @param server [UNIXServer]
+          # @param accept_task [#stop] the accept loop handle
+          # @param path [String] filesystem or abstract namespace path
+          #
           def initialize(endpoint, server, accept_task, path)
             @endpoint = endpoint
             @server = server
             @accept_task = accept_task
             @path = path
           end
+
 
           # Stops the listener.
           #

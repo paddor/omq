@@ -13,13 +13,16 @@ module OMQ
       #
       attr_reader :peer_socket_type
 
+
       # @return [String] peer's identity (from READY handshake)
       #
       attr_reader :peer_identity
 
+
       # @return [Object] transport IO (#read, #write, #close)
       #
       attr_reader :io
+
 
       # @param io [#read, #write, #close] transport IO
       # @param socket_type [String] our socket type name (e.g. "REQ")
@@ -51,6 +54,7 @@ module OMQ
         @max_message_size    = max_message_size
       end
 
+
       # Performs the full ZMTP handshake via the configured mechanism.
       #
       # @return [void]
@@ -77,6 +81,7 @@ module OMQ
         end
       end
 
+
       # Sends a multi-frame message (write + flush).
       #
       # @param parts [Array<String>] message frames
@@ -88,6 +93,7 @@ module OMQ
           @io.flush
         end
       end
+
 
       # Writes a multi-frame message to the buffer without flushing.
       # Call {#flush} after batching writes.
@@ -101,6 +107,7 @@ module OMQ
         end
       end
 
+
       # Flushes the write buffer to the underlying IO.
       #
       # @return [void]
@@ -110,6 +117,7 @@ module OMQ
           @io.flush
         end
       end
+
 
       # Receives a multi-frame message.
       # PING/PONG commands are handled automatically by #read_frame.
@@ -130,6 +138,7 @@ module OMQ
         end
         frames
       end
+
 
       # Starts the heartbeat sender task. Call after handshake.
       #
@@ -160,6 +169,7 @@ module OMQ
         end
       end
 
+
       # Sends a command.
       #
       # @param command [Codec::Command]
@@ -175,6 +185,7 @@ module OMQ
           @io.flush
         end
       end
+
 
       # Reads one frame from the wire. Handles PING/PONG automatically.
       # When using an encrypted mechanism, MESSAGE commands are decrypted
@@ -215,6 +226,7 @@ module OMQ
         end
       end
 
+
       # Closes the connection.
       #
       # @return [void]
@@ -226,8 +238,14 @@ module OMQ
         # already closed
       end
 
+
       private
 
+
+      # Writes message parts as ZMTP frames, encrypting if needed.
+      #
+      # @param parts [Array<String>] message frames
+      #
       def write_frames(parts)
         parts.each_with_index do |part, i|
           more = i < parts.size - 1
@@ -239,13 +257,16 @@ module OMQ
         end
       end
 
+
       def touch_heartbeat
         @last_received_at = monotonic_now if @heartbeat_interval
       end
 
+
       def monotonic_now
         Async::Clock.now
       end
+
 
       # Sends one frame to the wire.
       #

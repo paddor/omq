@@ -16,15 +16,18 @@ module OMQ
           init_round_robin(engine)
         end
 
+
         # @return [Async::LimitedQueue]
         #
         attr_reader :send_queue
+
 
         # PUSH is write-only.
         #
         def recv_queue
           raise "PUSH sockets cannot receive"
         end
+
 
         # @param connection [Connection]
         #
@@ -35,11 +38,13 @@ module OMQ
           start_reaper(connection)
         end
 
+
         # @param connection [Connection]
         #
         def connection_removed(connection)
           @connections.delete(connection)
         end
+
 
         # @param parts [Array<String>]
         #
@@ -47,6 +52,8 @@ module OMQ
           @send_queue.enqueue(parts)
         end
 
+
+        # Stops all background tasks (send pump, reapers).
         #
         def stop
           @tasks.each(&:stop)
@@ -54,6 +61,7 @@ module OMQ
         end
 
         private
+
 
         # Detects peer disconnection on write-only sockets. Without
         # this, a dead peer is only noticed on the next send — which

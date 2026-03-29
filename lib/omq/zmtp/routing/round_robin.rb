@@ -15,6 +15,11 @@ module OMQ
       module RoundRobin
         private
 
+
+        # Initializes round-robin state for the including class.
+        #
+        # @param engine [Engine]
+        #
         def init_round_robin(engine)
           @connections          = []
           @cycle                = @connections.cycle
@@ -23,11 +28,16 @@ module OMQ
           @send_pump_started    = false
         end
 
+
+        # Resolves the connection-available promise so blocked
+        # senders can proceed.
+        #
         def signal_connection_available
           unless @connection_available.resolved?
             @connection_available.resolve(true)
           end
         end
+
 
         # Blocks until a connection is available, then returns
         # the next one in round-robin order.
@@ -43,6 +53,7 @@ module OMQ
           retry
         end
 
+
         # Transforms parts before sending. Override in subclasses
         # (e.g. REQ prepends an empty delimiter frame).
         #
@@ -51,6 +62,10 @@ module OMQ
         #
         def transform_send(parts) = parts
 
+
+        # Starts the background send pump that dequeues messages
+        # and dispatches them round-robin across connections.
+        #
         def start_send_pump
           @send_pump_started = true
           parent = @engine.parent_task
@@ -68,6 +83,12 @@ module OMQ
           end
         end
 
+
+        # Sends a single message, retrying on a new connection if
+        # the current one is lost.
+        #
+        # @param parts [Array<String>]
+        #
         def send_with_retry(parts)
           conn = next_connection
           conn.send_message(transform_send(parts))
@@ -76,6 +97,12 @@ module OMQ
           retry
         end
 
+
+        # Sends a batch of messages, writing without flushing for
+        # throughput. Falls back to #send_with_retry on failure.
+        #
+        # @param batch [Array<Array<String>>]
+        #
         def send_batch(batch)
           written = Set.new
           batch.each_with_index do |parts, i|

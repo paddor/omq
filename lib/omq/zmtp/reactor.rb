@@ -81,6 +81,10 @@ module OMQ
 
         private
 
+        # Runs the shared Async reactor loop, dispatching work items.
+        #
+        # @param ready [Thread::Queue] signaled once the reactor is accepting work
+        #
         def run_reactor(ready)
           Async do |task|
             ready.push(true)
@@ -112,6 +116,7 @@ module OMQ
         # @return [Async::Task, nil]
         #
         attr_accessor :task
+
 
         # Stops the pump task.
         #

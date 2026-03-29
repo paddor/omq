@@ -16,15 +16,18 @@ module OMQ
           init_round_robin(engine)
         end
 
+
         # @return [Async::LimitedQueue]
         #
         attr_reader :send_queue
+
 
         # SCATTER is write-only.
         #
         def recv_queue
           raise "SCATTER sockets cannot receive"
         end
+
 
         # @param connection [Connection]
         #
@@ -35,11 +38,13 @@ module OMQ
           start_reaper(connection)
         end
 
+
         # @param connection [Connection]
         #
         def connection_removed(connection)
           @connections.delete(connection)
         end
+
 
         # @param parts [Array<String>]
         #
@@ -47,6 +52,8 @@ module OMQ
           @send_queue.enqueue(parts)
         end
 
+
+        # Stops all background tasks (send pump, reapers).
         #
         def stop
           @tasks.each(&:stop)
@@ -55,6 +62,12 @@ module OMQ
 
         private
 
+
+        # Detects peer disconnection on write-only sockets by
+        # blocking on a receive that only returns on disconnect.
+        #
+        # @param conn [Connection]
+        #
         def start_reaper(conn)
           @tasks << Reactor.spawn_pump(annotation: "reaper") do
             conn.receive_message

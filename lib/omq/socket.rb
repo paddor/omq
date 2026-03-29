@@ -8,9 +8,11 @@ module OMQ
     #
     attr_reader :options
 
+
     # @return [Integer, nil] last auto-selected TCP port
     #
     attr_reader :last_tcp_port
+
 
     # Delegate socket option accessors to @options.
     #
@@ -35,6 +37,7 @@ module OMQ
       define_method(method) { |*args| @options.public_send(method, *args) }
     end
 
+
     # Creates a new socket and binds it to the given endpoint.
     #
     # @param endpoint [String]
@@ -44,6 +47,7 @@ module OMQ
     def self.bind(endpoint, **opts)
       new(nil, **opts).tap { |s| s.bind(endpoint) }
     end
+
 
     # Creates a new socket and connects it to the given endpoint.
     #
@@ -55,7 +59,9 @@ module OMQ
       new(nil, **opts).tap { |s| s.connect(endpoint) }
     end
 
+
     def initialize(endpoints = nil, linger: 0); end
+
 
     # Binds to an endpoint.
     #
@@ -67,6 +73,7 @@ module OMQ
       @last_tcp_port = @engine.last_tcp_port
     end
 
+
     # Connects to an endpoint.
     #
     # @param endpoint [String]
@@ -75,6 +82,7 @@ module OMQ
     def connect(endpoint)
       @engine.connect(endpoint)
     end
+
 
     # Disconnects from an endpoint.
     #
@@ -85,6 +93,7 @@ module OMQ
       @engine.disconnect(endpoint)
     end
 
+
     # Unbinds from an endpoint.
     #
     # @param endpoint [String]
@@ -94,34 +103,39 @@ module OMQ
       @engine.unbind(endpoint)
     end
 
+
     # @return [String, nil] last bound endpoint
     #
     def last_endpoint
       @engine.last_endpoint
     end
 
-    # Closes the socket.
-    #
-    # @return [void]
-    #
+
     # @return [Async::Promise] resolves when first peer completes handshake
-    def peer_connected  = @engine.peer_connected
+    def peer_connected   = @engine.peer_connected
+
 
     # @return [Async::Promise] resolves when all peers disconnect (after having had peers)
-    def all_peers_gone  = @engine.all_peers_gone
+    def all_peers_gone   = @engine.all_peers_gone
 
-# @return [Integer] current number of peer connections
+
+    # @return [Integer] current number of peer connections
     def connection_count = @engine.connections.size
+
 
     # Disable auto-reconnect for connected endpoints.
     def reconnect_enabled=(val)
       @engine.reconnect_enabled = val
     end
 
+
+    # Closes the socket.
+    #
     def close
       @engine.close
       nil
     end
+
 
     # Set socket to use unbounded pipes (HWM=0).
     #
@@ -131,13 +145,16 @@ module OMQ
       nil
     end
 
+
     # @return [String]
     #
     def inspect
       format("#<%s last_endpoint=%p>", self.class, last_endpoint)
     end
 
+
     private
+
 
     # Runs a block with a timeout. Uses Async's with_timeout if inside
     # a reactor, otherwise falls back to Timeout.timeout.
@@ -156,6 +173,7 @@ module OMQ
       raise IO::TimeoutError, "timed out"
     end
 
+
     # Connects or binds based on endpoint prefix convention.
     #
     # @param endpoints [String, nil]
@@ -172,6 +190,7 @@ module OMQ
         __send__(default, endpoints)
       end
     end
+
 
     # Initializes engine and options for a socket type.
     #

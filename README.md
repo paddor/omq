@@ -33,6 +33,8 @@ Modern Ruby has closed the gap:
 
 When [CZTop](https://github.com/paddor/cztop) was written, none of this existed. Today, a pure Ruby ZMTP implementation is fast enough for production use — and you get `gem install` with no compiler toolchain, no system packages, and no segfaults.
 
+See [DESIGN.md](DESIGN.md) for architecture details: task trees, send pump batching, the ZMTP wire protocol, and how OMQ handles the fallacies of distributed computing.
+
 ## Install
 
 No system libraries needed — just Ruby:

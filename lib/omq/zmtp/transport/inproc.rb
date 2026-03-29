@@ -46,6 +46,7 @@ module OMQ
             Listener.new(endpoint)
           end
 
+
           # Connects to a bound inproc endpoint.
           #
           # @param endpoint [String] e.g. "inproc://my-endpoint"
@@ -76,6 +77,7 @@ module OMQ
             establish_link(engine, bound_engine, endpoint)
           end
 
+
           # Removes a bound endpoint from the registry.
           #
           # @param endpoint [String]
@@ -84,6 +86,7 @@ module OMQ
           def unbind(endpoint)
             @mutex.synchronize { @registry.delete(endpoint) }
           end
+
 
           # Resets the registry. Used in tests.
           #
@@ -96,8 +99,17 @@ module OMQ
             end
           end
 
+
           private
 
+
+          # Wires up a client-server inproc pipe pair after validating
+          # that the two socket types are compatible.
+          #
+          # @param client_engine [Engine] the connecting engine
+          # @param server_engine [Engine] the bound engine
+          # @param endpoint [String] the inproc endpoint name
+          #
           def establish_link(client_engine, server_engine, endpoint)
             client_type = client_engine.socket_type
             server_type = server_engine.socket_type
@@ -138,6 +150,13 @@ module OMQ
             server_engine.connection_ready(server_pipe, endpoint: endpoint)
           end
 
+
+          # Spawns a background task that periodically retries
+          # #establish_link until the endpoint appears in the registry.
+          #
+          # @param endpoint [String] the inproc endpoint name
+          # @param engine [Engine] the connecting engine
+          #
           def start_connect_retry(endpoint, engine)
             Reactor.spawn_pump(annotation: "reconnect") do
               ri  = engine.options.reconnect_interval
@@ -161,11 +180,13 @@ module OMQ
           #
           attr_reader :endpoint
 
+
           # @param endpoint [String]
           #
           def initialize(endpoint)
             @endpoint = endpoint
           end
+
 
           # Stops the listener by removing it from the registry.
           #
@@ -191,23 +212,28 @@ module OMQ
           #
           attr_reader :peer_socket_type
 
+
           # @return [String] peer's identity
           #
           attr_reader :peer_identity
 
+
           # @return [DirectPipe, nil] the other end of this pipe pair
           #
           attr_accessor :peer
+
 
           # @return [Async::LimitedQueue, nil] when set, {#send_message}
           #   enqueues directly here instead of using the internal queue
           #
           attr_reader :direct_recv_queue
 
+
           # @return [Proc, nil] optional transform applied before
           #   enqueuing into {#direct_recv_queue}
           #
           attr_accessor :direct_recv_transform
+
 
           # @param send_queue [Async::Queue, nil] outgoing command queue
           #   (nil for non-PUB/SUB types that don't exchange commands)
@@ -227,6 +253,7 @@ module OMQ
             @pending_direct        = nil
           end
 
+
           # Sets the direct recv queue. Drains any messages that were
           # buffered before the queue was available.
           #
@@ -239,6 +266,7 @@ module OMQ
               @pending_direct = nil
             end
           end
+
 
           # Sends a multi-frame message.
           #
@@ -262,13 +290,16 @@ module OMQ
             end
           end
 
+
           alias write_message send_message
+
 
           # No-op — inproc has no IO buffer to flush.
           #
           # @return [void]
           #
           def flush = nil
+
 
           # Receives a multi-frame message.
           #
@@ -281,6 +312,7 @@ module OMQ
             msg
           end
 
+
           # Sends a command via the internal command queue.
           # Only available for PUB/SUB-family pipes.
           #
@@ -291,6 +323,7 @@ module OMQ
             raise IOError, "closed" if @closed
             @send_queue.enqueue([:command, command])
           end
+
 
           # Reads one command frame from the internal command queue.
           # Used by PUB/XPUB subscription listeners.
@@ -307,6 +340,7 @@ module OMQ
               end
             end
           end
+
 
           # Closes this pipe end.
           #

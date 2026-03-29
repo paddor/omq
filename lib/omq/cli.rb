@@ -9,6 +9,7 @@ module OMQ
       client server radio dish scatter gather channel peer
     ].freeze
 
+
     EXAMPLES = <<~'TEXT'
       ── Request / Reply ──────────────────────────────────────────
 
@@ -129,6 +130,12 @@ module OMQ
 
     module_function
 
+
+    # Displays text through the system pager, or prints directly
+    # when stdout is not a terminal.
+    #
+    # @param text [String]
+    #
     def page(text)
       if $stdout.tty?
         if ENV["PAGER"]
@@ -147,6 +154,12 @@ module OMQ
       # user quit pager early
     end
 
+
+    # Parses CLI arguments, validates options, and runs the main
+    # event loop inside an Async reactor.
+    #
+    # @param argv [Array<String>]
+    #
     def run(argv = ARGV)
       opts = parse_options(argv)
       validate!(opts)
@@ -177,6 +190,12 @@ module OMQ
       end
     end
 
+
+    # Parses command-line arguments into an options hash.
+    #
+    # @param argv [Array<String>]
+    # @return [Hash]
+    #
     def parse_options(argv)
       opts = {
         connects:     [],
@@ -197,7 +216,7 @@ module OMQ
         conflate:     false,
         compress:     false,
         expr:         nil,
-        transient: false,
+        transient:    false,
         verbose:      false,
         quiet:        false,
       }
@@ -246,8 +265,8 @@ module OMQ
         o.on("-z", "--compress", "Zstandard compression per frame") { opts[:compress] = true }
 
         o.separator "\nProcessing:"
-        o.on("-e", "--eval EXPR",    "Eval Ruby for each message ($F = parts)")   { |v| opts[:expr] = v }
-        o.on("-r", "--require LIB", "Require library or file (-r./lib.rb)")    { |v|
+        o.on("-e", "--eval EXPR",    "Eval Ruby for each message ($F = parts)") { |v| opts[:expr] = v }
+        o.on("-r", "--require LIB",  "Require library or file (-r./lib.rb)")    { |v|
           v.start_with?("./", "../") ? require(File.expand_path(v)) : require(v)
         }
 
@@ -257,13 +276,13 @@ module OMQ
         o.separator "  Env vars: OMQ_SERVER_KEY (client), OMQ_SERVER_PUBLIC + OMQ_SERVER_SECRET (server)"
 
         o.separator "\nOther:"
-        o.on("-v", "--verbose",            "Print connection events to stderr")      { opts[:verbose] = true }
-        o.on("-q", "--quiet",              "Suppress message output")                { opts[:quiet] = true }
-        o.on(      "--transient", "Exit when all peers have disconnected")            { opts[:transient] = true }
-        o.on("-V", "--version")                                      { require "omq"; puts "omq #{OMQ::VERSION}"; exit }
-        o.on("-h")                                                   { puts o; exit }
-        o.on(      "--help")                                         { page "#{o}\n#{EXAMPLES}"; exit }
-        o.on(      "--examples")                                     { page EXAMPLES; exit }
+        o.on("-v", "--verbose",     "Print connection events to stderr") { opts[:verbose] = true }
+        o.on("-q", "--quiet",       "Suppress message output")          { opts[:quiet] = true }
+        o.on(      "--transient",   "Exit when all peers disconnect")   { opts[:transient] = true }
+        o.on("-V", "--version")     { require "omq"; puts "omq #{OMQ::VERSION}"; exit }
+        o.on("-h")                  { puts o; exit }
+        o.on(      "--help")        { page "#{o}\n#{EXAMPLES}"; exit }
+        o.on(      "--examples")    { page EXAMPLES; exit }
 
         o.separator "\nExit codes: 0 = success, 1 = error, 2 = timeout"
       end
@@ -284,10 +303,22 @@ module OMQ
       opts
     end
 
+
+    # Maps a socket type name to its OMQ class constant.
+    #
+    # @param type_name [String] downcased type name (e.g. "req", "pub")
+    # @return [Class]
+    #
     def resolve_socket_class(type_name)
       OMQ.const_get(type_name.upcase)
     end
 
+
+    # Validates option combinations and aborts with an error message
+    # if any are invalid.
+    #
+    # @param opts [Hash]
+    #
     def validate!(opts)
       type_name = opts[:type_name]
 
@@ -305,6 +336,12 @@ module OMQ
       end
     end
 
+
+    # Validates that required gems are available for the chosen format
+    # and compression options.
+    #
+    # @param opts [Hash]
+    #
     def validate_gems!(opts)
       abort "--msgpack requires the msgpack gem"    if opts[:format] == :msgpack && !opts[:has_msgpack]
       abort "--compress requires the zstd-ruby gem" if opts[:compress] && !opts[:has_zstd]
@@ -322,6 +359,7 @@ module OMQ
         @compress = compress
       end
 
+
       def encode(parts)
         case @format
         when :ascii
@@ -336,6 +374,7 @@ module OMQ
           MessagePack.pack(parts)
         end
       end
+
 
       def decode(line)
         case @format
@@ -352,6 +391,7 @@ module OMQ
         end
       end
 
+
       def decode_msgpack(io)
         @msgpack_unpacker ||= MessagePack::Unpacker.new(io)
         @msgpack_unpacker.read
@@ -359,9 +399,11 @@ module OMQ
         nil
       end
 
+
       def compress(parts)
         @compress ? parts.map { |p| Zstd.compress(p) } : parts
       end
+
 
       def decompress(parts)
         @compress ? parts.map { |p| Zstd.decompress(p) } : parts
@@ -371,7 +413,10 @@ module OMQ
     # Runs the main event loop for a given socket type.
     class Runner
       SEND_ONLY_NAMES = %w[pub push scatter radio].freeze
+
+
       RECV_ONLY_NAMES = %w[sub pull gather dish].freeze
+
 
       def initialize(opts, klass)
         @opts      = opts
@@ -383,6 +428,7 @@ module OMQ
         @opts[:connects].map!(&normalize)
         @opts[:binds].map!(&normalize)
       end
+
 
       def call(task)
         sock_opts = { linger: @opts[:linger] }
@@ -418,15 +464,19 @@ module OMQ
         @sock&.close
       end
 
+
       private
+
 
       def send_only?
         SEND_ONLY_NAMES.include?(@type_name)
       end
 
+
       def recv_only?
         RECV_ONLY_NAMES.include?(@type_name)
       end
+
 
       def start_disconnect_monitor(task)
         @transient_barrier = Async::Promise.new
@@ -442,6 +492,7 @@ module OMQ
         end
       end
 
+
       def transient_ready!
         if @opts[:transient] && !@transient_barrier.resolved?
           @transient_barrier.resolve(true)
@@ -449,6 +500,7 @@ module OMQ
       end
 
       # ── Socket setup ──────────────────────────────────────────────
+
 
       def setup_subscriptions
         case @type_name
@@ -459,6 +511,7 @@ module OMQ
           @opts[:joins].each { |g| @sock.join(g) }
         end
       end
+
 
       def setup_curve
         server_key_z85 = @opts[:curve_server_key] || ENV["OMQ_SERVER_KEY"]
@@ -490,6 +543,7 @@ module OMQ
 
       # ── Loop dispatch ──────────────────────────────────────────────
 
+
       def run_loop(task)
         case @type_name
         when "req", "client"
@@ -518,6 +572,7 @@ module OMQ
       end
 
       # ── Loop implementations ───────────────────────────────────────
+
 
       def send_loop
         i = 0
@@ -550,6 +605,7 @@ module OMQ
         end
       end
 
+
       def recv_loop
         i = 0
         loop do
@@ -560,6 +616,7 @@ module OMQ
           break if count_reached?(i)
         end
       end
+
 
       def req_loop
         i = 0
@@ -582,6 +639,7 @@ module OMQ
           end
         end
       end
+
 
       def rep_loop
         i = 0
@@ -606,6 +664,7 @@ module OMQ
           break if count_reached?(i)
         end
       end
+
 
       def pair_loop(task)
         receiver = task.async do
@@ -636,6 +695,7 @@ module OMQ
 
         wait_for_loops(receiver, sender)
       end
+
 
       def router_loop(task)
         receiver = task.async do
@@ -674,6 +734,7 @@ module OMQ
         wait_for_loops(receiver, sender)
       end
 
+
       def server_reply_loop
         i = 0
         loop do
@@ -698,6 +759,7 @@ module OMQ
           break if count_reached?(i)
         end
       end
+
 
       def server_loop(task)
         receiver = task.async do
@@ -735,6 +797,7 @@ module OMQ
         wait_for_loops(receiver, sender)
       end
 
+
       def wait_for_loops(receiver, sender)
         if @opts[:count] && @opts[:count] > 0
           receiver.wait
@@ -746,6 +809,7 @@ module OMQ
       end
 
       # ── Message I/O ────────────────────────────────────────────────
+
 
       def send_msg(parts)
         return if parts.empty?
@@ -759,15 +823,18 @@ module OMQ
         transient_ready!
       end
 
+
       def recv_msg
         parts = @fmt.decompress(@sock.receive)
         transient_ready!
         parts
       end
 
+
       def recv_msg_raw
         @sock.receive
       end
+
 
       def read_next
         if @opts[:data]
@@ -788,6 +855,7 @@ module OMQ
         end
       end
 
+
       def output(parts)
         return if @opts[:quiet]
         parts = [""] if parts.nil?
@@ -797,6 +865,7 @@ module OMQ
 
       # ── Routing helpers ────────────────────────────────────────────
 
+
       def display_routing_id(id)
         if id.bytes.all? { |b| b >= 0x20 && b <= 0x7E }
           id
@@ -804,6 +873,7 @@ module OMQ
           "0x#{id.unpack1("H*")}"
         end
       end
+
 
       def resolve_target(target)
         if target.start_with?("0x")
@@ -815,10 +885,12 @@ module OMQ
 
       # ── Eval / counting / logging ──────────────────────────────────
 
+
       def compile_expr
         return unless @opts[:expr]
         @eval_proc = eval("proc { #{@opts[:expr]} }")
       end
+
 
       def eval_expr(parts)
         return parts unless @eval_proc
@@ -832,9 +904,11 @@ module OMQ
         end
       end
 
+
       def count_reached?(i)
         @opts[:count] && @opts[:count] > 0 && i >= @opts[:count]
       end
+
 
       def log(msg)
         $stderr.puts(msg)

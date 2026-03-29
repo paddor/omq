@@ -28,7 +28,9 @@ module OMQ
             accept_task = Reactor.spawn_pump(annotation: "tcp accept #{resolved}") do
               loop do
                 client = server.accept
-                engine.handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: resolved)
+                Async::Task.current.defer_stop do
+                  engine.handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: resolved)
+                end
               end
             rescue IOError
               # server closed
@@ -51,6 +53,11 @@ module OMQ
 
           private
 
+          # Parses a TCP endpoint URI into host and port.
+          #
+          # @param endpoint [String]
+          # @return [Array(String, Integer)]
+          #
           def parse_endpoint(endpoint)
             uri = URI.parse(endpoint)
             [uri.hostname, uri.port]
@@ -68,12 +75,19 @@ module OMQ
           #
           attr_reader :port
 
+
+          # @param endpoint [String] resolved endpoint URI
+          # @param server [TCPServer]
+          # @param accept_task [#stop] the accept loop handle
+          # @param port [Integer] bound port number
+          #
           def initialize(endpoint, server, accept_task, port)
             @endpoint    = endpoint
             @server      = server
             @accept_task = accept_task
             @port        = port
           end
+
 
           # Stops the listener.
           #

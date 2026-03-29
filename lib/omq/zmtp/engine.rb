@@ -14,21 +14,26 @@ module OMQ
       #
       attr_reader :socket_type
 
+
       # @return [Options] socket options
       #
       attr_reader :options
+
 
       # @return [Routing] routing strategy
       #
       attr_reader :routing
 
+
       # @return [String, nil] last bound endpoint
       #
       attr_reader :last_endpoint
 
+
       # @return [Integer, nil] last auto-selected TCP port
       #
       attr_reader :last_tcp_port
+
 
       # @param socket_type [Symbol] e.g. :REQ, :REP, :PAIR
       # @param options [Options]
@@ -53,8 +58,12 @@ module OMQ
         @connection_promises  = {} # connection => Async::Promise
       end
 
+
       attr_reader :peer_connected, :all_peers_gone, :connections, :parent_task
+
+
       attr_writer :reconnect_enabled
+
 
       # Binds to an endpoint.
       #
@@ -70,6 +79,7 @@ module OMQ
         @last_endpoint = listener.endpoint
         @last_tcp_port = extract_tcp_port(listener.endpoint)
       end
+
 
       # Connects to an endpoint.
       #
@@ -89,6 +99,7 @@ module OMQ
         end
       end
 
+
       # Disconnects from an endpoint. Closes connections to that endpoint
       # and stops auto-reconnection for it.
       #
@@ -105,6 +116,7 @@ module OMQ
           conn.close
         end
       end
+
 
       # Unbinds from an endpoint. Stops the listener and closes all
       # connections that were accepted on it.
@@ -128,6 +140,7 @@ module OMQ
         end
       end
 
+
       # Called by a transport when an incoming connection is accepted.
       #
       # @param io [#read, #write, #close]
@@ -138,6 +151,7 @@ module OMQ
         spawn_connection(io, as_server: true, endpoint: endpoint)
       end
 
+
       # Called by a transport when an outgoing connection is established.
       #
       # @param io [#read, #write, #close]
@@ -146,6 +160,7 @@ module OMQ
       def handle_connected(io, endpoint: nil)
         spawn_connection(io, as_server: false, endpoint: endpoint)
       end
+
 
       # Called by inproc transport with a pre-validated DirectPipe.
       # Skips ZMTP handshake — just registers with routing strategy.
@@ -160,6 +175,7 @@ module OMQ
         @peer_connected.resolve(pipe)
       end
 
+
       # Dequeues the next received message. Blocks until available.
       #
       # @return [Array<String>] message parts
@@ -167,6 +183,7 @@ module OMQ
       def dequeue_recv
         @routing.recv_queue.dequeue
       end
+
 
       # Enqueues a message for sending. Blocks at HWM.
       #
@@ -176,6 +193,7 @@ module OMQ
       def enqueue_send(parts)
         @routing.enqueue(parts)
       end
+
 
       # Starts a recv pump for a connection, or wires the inproc
       # fast path when the connection is a DirectPipe.
@@ -203,6 +221,7 @@ module OMQ
         end
       end
 
+
       # Called when a connection is lost.
       #
       # @param connection [Connection]
@@ -228,6 +247,7 @@ module OMQ
           schedule_reconnect(endpoint)
         end
       end
+
 
       # Closes all connections and listeners.
       #
@@ -271,11 +291,17 @@ module OMQ
         @tasks.clear
       end
 
+
       private
 
+
+      # Saves the current Async task so connection subtrees can be
+      # spawned as siblings of the caller's task.
+      #
       def capture_parent_task
         @parent_task ||= Async::Task.current? ? Async::Task.current : nil
       end
+
 
       # Spawns an isolated connection task as a sibling of accept/reconnect
       # tasks. All per-connection children (heartbeat, recv pump, reaper)
@@ -292,6 +318,7 @@ module OMQ
         end
         @tasks << task if task
       end
+
 
       # Waits for the send queue to drain.
       #
@@ -310,12 +337,21 @@ module OMQ
         end
       end
 
+
+      # Performs the ZMTP handshake, starts heartbeating, and registers
+      # the new connection with the routing strategy.
+      #
+      # @param io [#read, #write, #close] underlying transport stream
+      # @param as_server [Boolean] whether we are the ZMTP server side
+      # @param endpoint [String, nil] endpoint for reconnection tracking
+      # @param done [Async::Promise, nil] resolved when the connection is lost
+      #
       def setup_connection(io, as_server:, endpoint: nil, done: nil)
         conn = Connection.new(
           io,
-          socket_type:       @socket_type.to_s,
-          identity:          @options.identity,
-          as_server:         as_server,
+          socket_type:        @socket_type.to_s,
+          identity:           @options.identity,
+          as_server:          as_server,
           mechanism:          @options.mechanism,
           heartbeat_interval: @options.heartbeat_interval,
           heartbeat_ttl:      @options.heartbeat_ttl,
@@ -334,6 +370,13 @@ module OMQ
         raise
       end
 
+
+      # Spawns a background task that reconnects to the given endpoint
+      # with exponential back-off based on the reconnect_interval option.
+      #
+      # @param endpoint [String] endpoint to reconnect to
+      # @param delay [Numeric, nil] initial delay in seconds (defaults to reconnect_interval)
+      #
       def schedule_reconnect(endpoint, delay: nil)
         ri = @options.reconnect_interval
         if ri.is_a?(Range)
@@ -371,6 +414,7 @@ module OMQ
         else raise ArgumentError, "unsupported transport: #{endpoint}"
         end
       end
+
 
       def extract_tcp_port(endpoint)
         return nil unless endpoint&.start_with?("tcp://")
