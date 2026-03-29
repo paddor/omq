@@ -4,6 +4,20 @@
 
 ### Added
 
+- **`--transient`** — exit when all peers disconnect (after at least one
+  message has been sent/received). Useful for pipeline sinks and workers.
+- **`--examples`** — annotated usage examples, paged via `$PAGER` or `less`.
+  `--help` now shows help + examples (paged); `-h` shows help only.
+- **`-r` relative paths** — `-r./lib.rb` and `-r../lib.rb` resolve via
+  `File.expand_path` instead of `$LOAD_PATH`.
+- **`peer_connected` / `all_peers_gone`** — `Async::Promise` hooks on
+  `Socket` for connection lifecycle tracking.
+- **`reconnect_enabled=`** — disable auto-reconnect per socket.
+- **Pipeline benchmark** — 4-worker fib pipeline via `omq` CLI
+  (`bench/omqcat/pipeline.sh`). ~300–1800 msg/s depending on N.
+- **DESIGN.md** — architecture overview covering task trees, send pump
+  batching, ZMTP wire protocol, transports, and the fallacies of
+  distributed computing.
 - **Draft socket types in omqcat** — CLIENT, SERVER, RADIO, DISH, SCATTER,
   GATHER, CHANNEL, and PEER are now supported in the CLI tool.
   - `-j`/`--join GROUP` for DISH (like `--subscribe` for SUB)
@@ -20,7 +34,25 @@
 
 ### Improved
 
-- **Extracted `OMQ::CLI` module** — `exe/omqcat` is now a thin wrapper;
+- **Renamed `omqcat` → `omq`** — the CLI executable is now `omq`, matching
+  the gem name.
+- **Per-connection task subtrees** — each connection gets an isolated Async
+  task whose children (heartbeat, recv pump, reaper) are cleaned up
+  automatically when the connection dies. No reparenting.
+- **Flat task tree** — send pump spawned at socket level (singleton), not
+  inside connection subtrees. Accept loops use `defer_stop` to prevent
+  socket leaks on stop.
+- **`compile_expr`** — `-e` expressions compiled once as a proc,
+  `instance_exec` per message (was `instance_eval` per message).
+- **Close lifecycle** — stop listeners before drain only when connections
+  exist; keep listeners open with zero connections so late-arriving peers
+  can receive queued messages during linger.
+- **Reconnect guard** — `@closing` flag suppresses reconnect during close.
+- **Task annotations** — all pump tasks carry descriptive annotations
+  (send pump, recv pump, reaper, heartbeat, reconnect, tcp/ipc accept).
+- **Rename monitor → reaper** — clearer name for PUSH/SCATTER dead-peer
+  detection tasks.
+- **Extracted `OMQ::CLI` module** — `exe/omq` is a thin wrapper;
   bulk of the CLI lives in `lib/omq/cli.rb` (loaded via `require "omq/cli"`,
   not auto-loaded by `require "omq"`).
   - `Formatter` class for encode/decode/compress/decompress
