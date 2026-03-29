@@ -184,6 +184,10 @@ module OMQ
         # next skips, break stops — regexps match against $_
         omq pull --bind tcp://:5557 \
           --eval 'next if /^#/; break if /quit/; $F'
+
+        # BEGIN/END blocks (like awk) — accumulate and summarize
+        omq pull --bind tcp://:5557 \
+          --eval 'BEGIN{ @sum = 0 } @sum += Integer($_); next END{ puts @sum }'
     TEXT
 
     module_function

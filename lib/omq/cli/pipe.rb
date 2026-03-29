@@ -54,6 +54,8 @@ module OMQ
           end
         end
 
+        @sock.instance_exec(&@begin_proc) if @begin_proc
+
         n = config.count
         i = 0
         loop do
@@ -67,6 +69,8 @@ module OMQ
           i += 1
           break if n && n > 0 && i >= n
         end
+
+        @sock.instance_exec(&@end_proc) if @end_proc
       ensure
         @pull&.close
         @push&.close
@@ -80,11 +84,28 @@ module OMQ
             Console.logger = Console::Logger.new(Console::Output::Null.new)
 
             Sync do |task|
-              # Compile eval — rewrite $F to __F (proc parameter)
-              eval_proc = if cfg.expr
-                           ractor_expr = cfg.expr.gsub(/\$F\b/, "__F")
-                           eval("proc { |__F| $_ = __F&.first; #{ractor_expr} }")
-                         end
+              # Parse BEGIN/END blocks and per-message expression
+              begin_proc = end_proc = eval_proc = nil
+              if cfg.expr
+                extract = ->(src, kw) {
+                  s = src.index(/#{kw}\s*\{/)
+                  return [src, nil] unless s
+                  i = src.index("{", s); d = 1; j = i + 1
+                  while j < src.length && d > 0
+                    d += 1 if src[j] == "{"; d -= 1 if src[j] == "}"
+                    j += 1
+                  end
+                  [src[0...s] + src[j..], src[(i + 1)..(j - 2)]]
+                }
+                expr, begin_body = extract.(cfg.expr, "BEGIN")
+                expr, end_body   = extract.(expr, "END")
+                begin_proc = eval("proc { #{begin_body} }") if begin_body
+                end_proc   = eval("proc { #{end_body} }")   if end_body
+                if expr && !expr.strip.empty?
+                  ractor_expr = expr.gsub(/\$F\b/, "__F")
+                  eval_proc   = eval("proc { |__F| $_ = __F&.first; #{ractor_expr} }")
+                end
+              end
 
               formatter = OMQ::CLI::Formatter.new(cfg.format, compress: cfg.compress)
 
@@ -115,6 +136,8 @@ module OMQ
                 end
               end
 
+              begin_proc&.call
+
               i = 0
               loop do
                 parts = pull.receive
@@ -135,6 +158,8 @@ module OMQ
                 i += 1
                 break if cfg.count && cfg.count > 0 && i >= cfg.count
               end
+
+              end_proc&.call
             rescue Async::TimeoutError
               # exit cleanly on timeout
             ensure
@@ -163,7 +188,39 @@ module OMQ
 
       def compile_expr
         return unless config.expr
-        @eval_proc = eval("proc { $_ = $F&.first; #{config.expr} }")
+        expr, begin_body, end_body = extract_blocks(config.expr)
+        @begin_proc = eval("proc { #{begin_body} }") if begin_body
+        @end_proc   = eval("proc { #{end_body} }")   if end_body
+        @eval_proc  = eval("proc { $_ = $F&.first; #{expr} }") if expr && !expr.strip.empty?
+      end
+
+
+      def extract_blocks(expr)
+        begin_body = end_body = nil
+        expr, begin_body = extract_block(expr, "BEGIN")
+        expr, end_body   = extract_block(expr, "END")
+        [expr, begin_body, end_body]
+      end
+
+
+      def extract_block(expr, keyword)
+        start = expr.index(/#{keyword}\s*\{/)
+        return [expr, nil] unless start
+
+        i     = expr.index("{", start)
+        depth = 1
+        j     = i + 1
+        while j < expr.length && depth > 0
+          case expr[j]
+          when "{" then depth += 1
+          when "}" then depth -= 1
+          end
+          j += 1
+        end
+
+        body    = expr[(i + 1)..(j - 2)]
+        trimmed = expr[0...start] + expr[j..]
+        [trimmed, body]
       end
 
 

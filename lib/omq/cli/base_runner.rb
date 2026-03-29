@@ -28,7 +28,9 @@ module OMQ
         sleep(config.delay) if config.delay && config.recv_only?
         wait_for_peer if needs_peer_wait?
 
+        @sock.instance_exec(&@begin_proc) if @begin_proc
         run_loop(task)
+        @sock.instance_exec(&@end_proc) if @end_proc
       ensure
         @sock&.close
       end
@@ -357,7 +359,40 @@ module OMQ
 
       def compile_expr
         return unless config.expr
-        @eval_proc = eval("proc { $_ = $F&.first; #{config.expr} }")
+        expr, begin_body, end_body = extract_blocks(config.expr)
+        @begin_proc = eval("proc { #{begin_body} }") if begin_body
+        @end_proc   = eval("proc { #{end_body} }")   if end_body
+        @eval_proc  = eval("proc { $_ = $F&.first; #{expr} }") if expr && !expr.strip.empty?
+      end
+
+
+      def extract_blocks(expr)
+        begin_body = end_body = nil
+        expr, begin_body = extract_block(expr, "BEGIN")
+        expr, end_body   = extract_block(expr, "END")
+        [expr, begin_body, end_body]
+      end
+
+
+      def extract_block(expr, keyword)
+        start = expr.index(/#{keyword}\s*\{/)
+        return [expr, nil] unless start
+
+        # Find the opening brace
+        i = expr.index("{", start)
+        depth = 1
+        j     = i + 1
+        while j < expr.length && depth > 0
+          case expr[j]
+          when "{" then depth += 1
+          when "}" then depth -= 1
+          end
+          j += 1
+        end
+
+        body    = expr[(i + 1)..(j - 2)]
+        trimmed = expr[0...start] + expr[j..]
+        [trimmed, body]
       end
 
 

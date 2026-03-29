@@ -19,6 +19,9 @@
   (default: nproc) in a single process for true CPU parallelism. Each
   Ractor runs its own Async reactor with independent PULL/PUSH sockets.
   `$F` in `-e` expressions is transparently rewritten for Ractor isolation.
+- **`BEGIN{}`/`END{}` blocks in `-e` expressions** — like awk, run setup
+  before the message loop and teardown after. Supports nested braces.
+  Example: `-e 'BEGIN{ @sum = 0 } @sum += Integer($_); next END{ puts @sum }'`
 - **`--reconnect-ivl`** — set reconnect interval from the CLI, accepts a
   fixed value (`0.5`) or a range for exponential backoff (`0.1..2`).
 
