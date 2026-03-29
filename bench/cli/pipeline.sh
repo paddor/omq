@@ -14,7 +14,7 @@
 # Workers exit via --timeout when idle — no sentinels needed.
 # Sink exits via --transient when all workers disconnect.
 #
-# Usage: sh bench/omq/pipeline.sh [count]
+# Usage: sh bench/cli/pipeline.sh [count]
 #
 set -u
 
@@ -55,9 +55,6 @@ done
 
 START=$(ruby -e 'puts Process.clock_gettime(Process::CLOCK_MONOTONIC)')
 
-# Shell sleep gives workers time to boot before we even start
-# the producer. The linger on the producer keeps the listener
-# alive until all queued messages are delivered.
 sleep 1
 ruby --yjit -e "
 ints = (1..28).cycle
