@@ -31,6 +31,16 @@
 - **Exit codes** — 0 = success, 1 = error, 2 = timeout.
 - **CLI unit tests** — 74 tests covering Formatter, routing helpers,
   validation, and option parsing.
+- **Quantized `--interval`** — uses `Async::Loop.quantized` for
+  wall-clock-aligned, start-to-start timing (no drift).
+- **`-e` as data source** — eval expressions can generate messages without
+  `--data`, `--file`, or stdin. E.g. `omq pub -e 'Time.now.to_s' -i 1`.
+- **`$_` in eval** — set to the first frame of `$F` inside `-e` expressions,
+  following Ruby convention.
+- **`wait_for_peer`** — connecting sockets wait for the first peer handshake
+  before sending. Replaces the need for manual `--delay` on PUB, PUSH, etc.
+- **`OMQ_DEV` env var** — unified dev-mode flag for loading local omq and
+  omq-curve source via `require_relative` (replaces `DEV_ENV`).
 
 ### Improved
 
@@ -63,6 +73,10 @@
   of lossy Z85 encoding. `--target 0x...` decodes hex on input.
 - **Compression-safe routing** — routing ID and delimiter frames are no
   longer compressed/decompressed in ROUTER, SERVER, and PEER loops.
+- **`require_relative` in CLI** — `exe/omq` loads the local source tree
+  instead of the installed gem.
+- **`output` skips nil** — `-e` returning nil no longer prints a blank line.
+- **Removed `#count_reached?`** — inlined for clarity.
 
 ### Fixed
 

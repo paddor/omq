@@ -487,3 +487,80 @@ describe "OMQ::CLI.parse_options" do
     assert_raises(SystemExit) { quietly { OMQ::CLI.parse_options([]) } }
   end
 end
+
+# ── Eval ($F and $_) ────────────────────────────────────────────────
+
+describe "eval_expr" do
+  before do
+    @runner = OMQ::CLI::Runner.new(
+      { type_name: "push", connects: [], binds: [], expr: "[$_, *$F]" },
+      OMQ::PUSH
+    )
+    @runner.send(:compile_expr)
+  end
+
+  it "sets $F to message parts" do
+    result = @runner.send(:eval_expr, ["hello", "world"])
+    assert_equal ["hello", "hello", "world"], result
+  end
+
+  it "sets $_ to first frame" do
+    result = @runner.send(:eval_expr, ["first", "second"])
+    assert_equal "first", result.first
+  end
+
+  it "sets $_ to nil when parts is nil" do
+    runner = OMQ::CLI::Runner.new(
+      { type_name: "push", connects: [], binds: [], expr: "$_.nil? ? 'yes' : 'no'" },
+      OMQ::PUSH
+    )
+    runner.send(:compile_expr)
+    result = runner.send(:eval_expr, nil)
+    assert_equal ["yes"], result
+  end
+
+  it "returns nil when expression evaluates to nil" do
+    runner = OMQ::CLI::Runner.new(
+      { type_name: "push", connects: [], binds: [], expr: "nil" },
+      OMQ::PUSH
+    )
+    runner.send(:compile_expr)
+    assert_nil runner.send(:eval_expr, ["anything"])
+  end
+
+  it "wraps string result in array" do
+    runner = OMQ::CLI::Runner.new(
+      { type_name: "push", connects: [], binds: [], expr: "'hello'" },
+      OMQ::PUSH
+    )
+    runner.send(:compile_expr)
+    assert_equal ["hello"], runner.send(:eval_expr, nil)
+  end
+end
+
+# ── Output ──────────────────────────────────────────────────────────
+
+describe "output" do
+  before do
+    @runner = OMQ::CLI::Runner.new(
+      { type_name: "pull", connects: [], binds: [], quiet: false, format: :ascii },
+      OMQ::PULL
+    )
+  end
+
+  it "skips nil parts" do
+    out = StringIO.new
+    $stdout = out
+    @runner.send(:output, nil)
+    $stdout = STDOUT
+    assert_equal "", out.string
+  end
+
+  it "prints message parts" do
+    out = StringIO.new
+    $stdout = out
+    @runner.send(:output, ["hello"])
+    $stdout = STDOUT
+    assert_equal "hello\n", out.string
+  end
+end

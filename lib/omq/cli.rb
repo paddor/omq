@@ -40,6 +40,23 @@ module OMQ
         # terminal 2: publisher (needs --delay for subscription to propagate)
         echo "weather.nyc 72F" | omq pub --connect tcp://localhost:5556 --delay 1
 
+      ── Periodic Publish ───────────────────────────────────────────
+
+        ┌─────┐  "tick 1"   ┌─────┐
+        │ PUB │──(every 1s)─→│ SUB │
+        └─────┘              └─────┘
+
+        # terminal 1: subscriber
+        omq sub --bind tcp://:5556
+
+        # terminal 2: publish a tick every second (wall-clock aligned)
+        omq pub --connect tcp://localhost:5556 --delay 1 \
+          --data "tick" --interval 1
+
+        # 5 ticks, then exit
+        omq pub --connect tcp://localhost:5556 --delay 1 \
+          --data "tick" --interval 1 --count 5
+
       ── Pipeline ─────────────────────────────────────────────────
 
         ┌──────┐           ┌──────┐
@@ -164,7 +181,7 @@ module OMQ
       opts = parse_options(argv)
       validate!(opts)
 
-      require "omq"
+      require_relative "../omq"
       require "async"
       require "json"
       require "console"
@@ -279,7 +296,7 @@ module OMQ
         o.on("-v", "--verbose",     "Print connection events to stderr") { opts[:verbose] = true }
         o.on("-q", "--quiet",       "Suppress message output")          { opts[:quiet] = true }
         o.on(      "--transient",   "Exit when all peers disconnect")   { opts[:transient] = true }
-        o.on("-V", "--version")     { require "omq"; puts "omq #{OMQ::VERSION}"; exit }
+        o.on("-V", "--version")     { require_relative "../omq"; puts "omq #{OMQ::VERSION}"; exit }
         o.on("-h")                  { puts o; exit }
         o.on(      "--help")        { page "#{o}\n#{EXAMPLES}"; exit }
         o.on(      "--examples")    { page EXAMPLES; exit }
@@ -458,6 +475,7 @@ module OMQ
         end
 
         sleep(@opts[:delay]) if @opts[:delay] && recv_only?
+        wait_for_peer if !recv_only? && @opts[:connects].any?
 
         run_loop(task)
       ensure
@@ -493,6 +511,12 @@ module OMQ
       end
 
 
+      def wait_for_peer
+        @sock.peer_connected.wait
+        log "Peer connected" if @opts[:verbose]
+      end
+
+
       def transient_ready!
         if @opts[:transient] && !@transient_barrier.resolved?
           @transient_barrier.resolve(true)
@@ -518,14 +542,22 @@ module OMQ
         server_mode    = @opts[:curve_server] || (ENV["OMQ_SERVER_PUBLIC"] && ENV["OMQ_SERVER_SECRET"])
 
         if server_key_z85
-          require "omq/curve"
+          if ENV["OMQ_DEV"]
+            require_relative "../../../omq-curve/lib/omq/curve"
+          else
+            require "omq/curve"
+          end
           server_key = OMQ::Z85.decode(server_key_z85)
           client_key = RbNaCl::PrivateKey.generate
           @sock.mechanism = OMQ::Curve.client(
             client_key.public_key.to_s, client_key.to_s, server_key: server_key
           )
         elsif server_mode
-          require "omq/curve"
+          if ENV["OMQ_DEV"]
+            require_relative "../../../omq-curve/lib/omq/curve"
+          else
+            require "omq/curve"
+          end
           if ENV["OMQ_SERVER_PUBLIC"] && ENV["OMQ_SERVER_SECRET"]
             server_pub = OMQ::Z85.decode(ENV["OMQ_SERVER_PUBLIC"])
             server_sec = OMQ::Z85.decode(ENV["OMQ_SERVER_SECRET"])
@@ -575,73 +607,80 @@ module OMQ
 
 
       def send_loop
+        n = @opts[:count]
         i = 0
-        if @opts[:data] || @opts[:file]
-          loop do
-            parts = read_next
-            break unless parts
-            parts = eval_expr(parts)
-            sleep(@opts[:delay]) if @opts[:delay] && i == 0
+        sleep(@opts[:delay]) if @opts[:delay]
+        if @opts[:interval]
+          Async::Loop.quantized(interval: @opts[:interval]) do
+            raw = read_next_or_nil
+            break if raw.nil? && !@eval_proc
+            parts = eval_expr(raw)
             send_msg(parts) if parts
             i += 1
-            break if count_reached?(i)
-            if @opts[:interval]
-              sleep(@opts[:interval])
-            else
-              break
-            end
+            break if n && n > 0 && i >= n
           end
+        elsif @opts[:data] || @opts[:file]
+          parts = eval_expr(read_next)
+          send_msg(parts) if parts
         else
           loop do
             parts = read_next
             break unless parts
             parts = eval_expr(parts)
-            sleep(@opts[:delay]) if @opts[:delay] && i == 0
             send_msg(parts) if parts
             i += 1
-            break if count_reached?(i)
-            sleep(@opts[:interval]) if @opts[:interval]
+            break if n && n > 0 && i >= n
           end
         end
       end
 
 
       def recv_loop
+        n = @opts[:count]
         i = 0
         loop do
           parts = recv_msg
           parts = eval_expr(parts)
           output(parts)
           i += 1
-          break if count_reached?(i)
+          break if n && n > 0 && i >= n
         end
       end
 
 
       def req_loop
+        n = @opts[:count]
         i = 0
-        loop do
-          parts = read_next
-          break unless parts
-          sleep(@opts[:delay]) if @opts[:delay] && i == 0
-          send_msg(parts)
-          reply = recv_msg
-          reply = eval_expr(reply)
-          output(reply)
-          i += 1
-          break if count_reached?(i)
-          if @opts[:interval]
-            sleep(@opts[:interval])
-          elsif !@opts[:data] && !@opts[:file]
-            next
-          else
-            break
+        sleep(@opts[:delay]) if @opts[:delay]
+        if @opts[:interval]
+          Async::Loop.quantized(interval: @opts[:interval]) do
+            parts = read_next
+            break unless parts
+            send_msg(parts)
+            reply = recv_msg
+            reply = eval_expr(reply)
+            output(reply)
+            i += 1
+            break if n && n > 0 && i >= n
+          end
+        else
+          loop do
+            parts = read_next
+            break unless parts
+            send_msg(parts)
+            reply = recv_msg
+            reply = eval_expr(reply)
+            output(reply)
+            i += 1
+            break if n && n > 0 && i >= n
+            break if @opts[:data] || @opts[:file]
           end
         end
       end
 
 
       def rep_loop
+        n = @opts[:count]
         i = 0
         loop do
           msg = recv_msg
@@ -661,35 +700,49 @@ module OMQ
             abort "REP needs a reply source: --echo, --data, --file, -e, or stdin pipe"
           end
           i += 1
-          break if count_reached?(i)
+          break if n && n > 0 && i >= n
         end
       end
 
 
       def pair_loop(task)
         receiver = task.async do
+          n = @opts[:count]
           i = 0
           loop do
             parts = recv_msg
             parts = eval_expr(parts)
             output(parts)
             i += 1
-            break if count_reached?(i)
+            break if n && n > 0 && i >= n
           end
         end
 
         sender = task.async do
+          n = @opts[:count]
           i = 0
-          loop do
-            parts = read_next
-            break unless parts
-            parts = eval_expr(parts)
-            sleep(@opts[:delay]) if @opts[:delay] && i == 0
+          sleep(@opts[:delay]) if @opts[:delay]
+          if @opts[:interval]
+            Async::Loop.quantized(interval: @opts[:interval]) do
+              raw   = read_next_or_nil
+              break if raw.nil? && @stdin_open
+              parts = eval_expr(raw)
+              send_msg(parts) if parts
+              i += 1
+              break if n && n > 0 && i >= n
+            end
+          elsif @opts[:data] || @opts[:file]
+            parts = eval_expr(read_next)
             send_msg(parts) if parts
-            i += 1
-            break if count_reached?(i)
-            break if (@opts[:data] || @opts[:file]) && !@opts[:interval]
-            sleep(@opts[:interval]) if @opts[:interval]
+          else
+            loop do
+              parts = read_next
+              break unless parts
+              parts = eval_expr(parts)
+              send_msg(parts) if parts
+              i += 1
+              break if n && n > 0 && i >= n
+            end
           end
         end
 
@@ -699,6 +752,7 @@ module OMQ
 
       def router_loop(task)
         receiver = task.async do
+          n = @opts[:count]
           i = 0
           loop do
             parts = recv_msg_raw
@@ -708,26 +762,50 @@ module OMQ
             result = eval_expr([display_routing_id(identity), *parts])
             output(result)
             i += 1
-            break if count_reached?(i)
+            break if n && n > 0 && i >= n
           end
         end
 
         sender = task.async do
+          n = @opts[:count]
           i = 0
-          loop do
-            parts = read_next
-            break unless parts
-            sleep(@opts[:delay]) if @opts[:delay] && i == 0
-            if @opts[:target]
-              payload = @fmt.compress(parts)
-              @sock.send([resolve_target(@opts[:target]), "", *payload])
-            else
-              send_msg(parts)
+          sleep(@opts[:delay]) if @opts[:delay]
+          if @opts[:interval]
+            Async::Loop.quantized(interval: @opts[:interval]) do
+              parts = read_next
+              break unless parts
+              if @opts[:target]
+                payload = @fmt.compress(parts)
+                @sock.send([resolve_target(@opts[:target]), "", *payload])
+              else
+                send_msg(parts)
+              end
+              i += 1
+              break if n && n > 0 && i >= n
             end
-            i += 1
-            break if count_reached?(i)
-            break if (@opts[:data] || @opts[:file]) && !@opts[:interval]
-            sleep(@opts[:interval]) if @opts[:interval]
+          elsif @opts[:data] || @opts[:file]
+            parts = read_next
+            if parts
+              if @opts[:target]
+                payload = @fmt.compress(parts)
+                @sock.send([resolve_target(@opts[:target]), "", *payload])
+              else
+                send_msg(parts)
+              end
+            end
+          else
+            loop do
+              parts = read_next
+              break unless parts
+              if @opts[:target]
+                payload = @fmt.compress(parts)
+                @sock.send([resolve_target(@opts[:target]), "", *payload])
+              else
+                send_msg(parts)
+              end
+              i += 1
+              break if n && n > 0 && i >= n
+            end
           end
         end
 
@@ -736,6 +814,7 @@ module OMQ
 
 
       def server_reply_loop
+        n = @opts[:count]
         i = 0
         loop do
           parts = recv_msg_raw
@@ -756,13 +835,14 @@ module OMQ
             @sock.send_to(routing_id, @fmt.compress(reply).first || "")
           end
           i += 1
-          break if count_reached?(i)
+          break if n && n > 0 && i >= n
         end
       end
 
 
       def server_loop(task)
         receiver = task.async do
+          n = @opts[:count]
           i = 0
           loop do
             parts = recv_msg_raw
@@ -771,26 +851,50 @@ module OMQ
             result = eval_expr([display_routing_id(routing_id), *parts])
             output(result)
             i += 1
-            break if count_reached?(i)
+            break if n && n > 0 && i >= n
           end
         end
 
         sender = task.async do
+          n = @opts[:count]
           i = 0
-          loop do
-            parts = read_next
-            break unless parts
-            sleep(@opts[:delay]) if @opts[:delay] && i == 0
-            if @opts[:target]
-              parts = @fmt.compress(parts)
-              @sock.send_to(resolve_target(@opts[:target]), parts.first || "")
-            else
-              send_msg(parts)
+          sleep(@opts[:delay]) if @opts[:delay]
+          if @opts[:interval]
+            Async::Loop.quantized(interval: @opts[:interval]) do
+              parts = read_next
+              break unless parts
+              if @opts[:target]
+                parts = @fmt.compress(parts)
+                @sock.send_to(resolve_target(@opts[:target]), parts.first || "")
+              else
+                send_msg(parts)
+              end
+              i += 1
+              break if n && n > 0 && i >= n
             end
-            i += 1
-            break if count_reached?(i)
-            break if (@opts[:data] || @opts[:file]) && !@opts[:interval]
-            sleep(@opts[:interval]) if @opts[:interval]
+          elsif @opts[:data] || @opts[:file]
+            parts = read_next
+            if parts
+              if @opts[:target]
+                parts = @fmt.compress(parts)
+                @sock.send_to(resolve_target(@opts[:target]), parts.first || "")
+              else
+                send_msg(parts)
+              end
+            end
+          else
+            loop do
+              parts = read_next
+              break unless parts
+              if @opts[:target]
+                parts = @fmt.compress(parts)
+                @sock.send_to(resolve_target(@opts[:target]), parts.first || "")
+              else
+                send_msg(parts)
+              end
+              i += 1
+              break if n && n > 0 && i >= n
+            end
           end
         end
 
@@ -856,9 +960,19 @@ module OMQ
       end
 
 
+      def read_next_or_nil
+        if @opts[:data] || @opts[:file]
+          read_next
+        elsif @eval_proc
+          nil
+        else
+          read_next
+        end
+      end
+
+
       def output(parts)
-        return if @opts[:quiet]
-        parts = [""] if parts.nil?
+        return if @opts[:quiet] || parts.nil?
         $stdout.write(@fmt.encode(parts))
         $stdout.flush
       end
@@ -888,7 +1002,7 @@ module OMQ
 
       def compile_expr
         return unless @opts[:expr]
-        @eval_proc = eval("proc { #{@opts[:expr]} }")
+        @eval_proc = eval("proc { $_ = $F&.first; #{@opts[:expr]} }")
       end
 
 
@@ -902,11 +1016,6 @@ module OMQ
         when String then [result]
         else             [result.to_s]
         end
-      end
-
-
-      def count_reached?(i)
-        @opts[:count] && @opts[:count] > 0 && i >= @opts[:count]
       end
 
 

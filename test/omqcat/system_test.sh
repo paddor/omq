@@ -11,6 +11,7 @@ set -u
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
+export OMQ_DEV=1
 OMQ="ruby exe/omq"
 PASS=0
 FAIL=0
@@ -234,6 +235,59 @@ timeout 5 $OMQ push -c tcp://localhost:$P -D "tick" -i 0.1 -n 3 2>/dev/null
 wait 2>/dev/null
 INTERVAL_COUNT=$(wc -l < $TMPDIR/interval_out.txt | tr -d ' ')
 check "interval sends N messages" "3" "$INTERVAL_COUNT"
+
+# ── Interval with -e (no data/file) ────────────────────────────────
+
+echo "Interval with eval:"
+P=$(next_port)
+run_bg $OMQ pull -b tcp://:$P -n 3 > $TMPDIR/interval_eval_out.txt 2>/dev/null
+sleep 0.5
+timeout 5 $OMQ push -c tcp://localhost:$P -e '"tick"' -i 0.1 -n 3 2>/dev/null
+wait 2>/dev/null
+INTERVAL_EVAL_COUNT=$(wc -l < $TMPDIR/interval_eval_out.txt | tr -d ' ')
+check "interval -e generates messages without input" "3" "$INTERVAL_EVAL_COUNT"
+
+# ── Eval sets $_ ───────────────────────────────────────────────────
+
+echo "Eval \$_:"
+P=$(next_port)
+run_bg $OMQ pull -b tcp://:$P -n 1 > $TMPDIR/eval_line_out.txt 2>/dev/null
+sleep 0.5
+echo "hello" | timeout 5 $OMQ push -c tcp://localhost:$P -e '$_.upcase' 2>/dev/null
+wait 2>/dev/null
+EVAL_LINE_OUT=$(cat $TMPDIR/eval_line_out.txt)
+check "eval sets \$_ to first frame" "HELLO" "$EVAL_LINE_OUT"
+
+# ── Eval nil skips output ──────────────────────────────────────────
+
+echo "Eval nil output:"
+P=$(next_port)
+run_bg $OMQ pull -b tcp://:$P -n 1 > $TMPDIR/eval_nil_out.txt 2>/dev/null
+sleep 0.5
+timeout 5 sh -c "printf 'skip\nkeep\n' | $OMQ push -c tcp://localhost:$P -e '\$F.first == \"skip\" ? nil : \$F' 2>/dev/null"
+wait 2>/dev/null
+EVAL_NIL_COUNT=$(wc -l < $TMPDIR/eval_nil_out.txt | tr -d ' ')
+check "eval nil produces no output" "1" "$EVAL_NIL_COUNT"
+
+# ── Interval quantized timing ─────────────────────────────────────
+
+echo "Interval timing:"
+P=$(next_port)
+run_bg $OMQ pull -b tcp://:$P -n 5 > $TMPDIR/interval_timing_out.txt 2>/dev/null
+sleep 0.5
+START=$(date +%s%N)
+timeout 10 $OMQ push -c tcp://localhost:$P -D "tick" -i 0.5 -n 5 2>/dev/null
+END=$(date +%s%N)
+wait 2>/dev/null
+ELAPSED_MS=$(( (END - START) / 1000000 ))
+# 5 messages at 0.5s interval: first fires after 0.5s wait, total ~2.5s (2500ms)
+# Allow 1500–4000ms to account for startup and scheduling jitter
+if [ "$ELAPSED_MS" -ge 1500 ] && [ "$ELAPSED_MS" -le 4000 ]; then
+  TIMING_OK="yes"
+else
+  TIMING_OK="no (${ELAPSED_MS}ms)"
+fi
+check "quantized interval keeps cadence" "yes" "$TIMING_OK"
 
 # ── DEALER with --identity ──────────────────────────────────────────
 
