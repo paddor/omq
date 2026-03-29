@@ -19,6 +19,8 @@
   (default: nproc) in a single process for true CPU parallelism. Each
   Ractor runs its own Async reactor with independent PULL/PUSH sockets.
   `$F` in `-e` expressions is transparently rewritten for Ractor isolation.
+- **`--reconnect-ivl`** — set reconnect interval from the CLI, accepts a
+  fixed value (`0.5`) or a range for exponential backoff (`0.1..2`).
 
 ### Improved
 

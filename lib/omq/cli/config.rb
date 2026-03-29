@@ -25,6 +25,7 @@ module OMQ
       :delay,
       :timeout,
       :linger,
+      :reconnect_ivl,
       :conflate,
       :compress,
       :expr,

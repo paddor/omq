@@ -30,6 +30,8 @@ module OMQ
 
         @pull = OMQ::PULL.new(linger: config.linger, recv_timeout: config.timeout)
         @push = OMQ::PUSH.new(linger: config.linger, send_timeout: config.timeout)
+        @pull.reconnect_interval = config.reconnect_ivl if config.reconnect_ivl
+        @push.reconnect_interval = config.reconnect_ivl if config.reconnect_ivl
 
         pull_ep.bind? ? @pull.bind(pull_ep.url) : @pull.connect(pull_ep.url)
         push_ep.bind? ? @push.bind(push_ep.url) : @push.connect(push_ep.url)
@@ -70,19 +72,20 @@ module OMQ
 
 
       def run_parallel
-        pull_url  = config.endpoints[0].url
-        push_url  = config.endpoints[1].url
-        expr      = config.expr
-        fmt_name  = config.format
-        compress  = config.compress
-        linger    = config.linger
-        timeout   = config.timeout
-        transient = config.transient
-        count     = config.count
+        pull_url      = config.endpoints[0].url
+        push_url      = config.endpoints[1].url
+        expr          = config.expr
+        fmt_name      = config.format
+        compress      = config.compress
+        linger        = config.linger
+        timeout       = config.timeout
+        reconnect_ivl = config.reconnect_ivl
+        transient     = config.transient
+        count         = config.count
 
         workers = config.parallel.times.map do
-          Ractor.new(pull_url, push_url, expr, fmt_name, compress, linger, timeout, transient, count) do
-            |purl, surl, xpr, fmt, comp, ling, tout, trans, cnt|
+          Ractor.new(pull_url, push_url, expr, fmt_name, compress, linger, timeout, reconnect_ivl, transient, count) do
+            |purl, surl, xpr, fmt, comp, ling, tout, rivl, trans, cnt|
 
             $VERBOSE = nil
             Console.logger = Console::Logger.new(Console::Output::Null.new)
@@ -98,6 +101,8 @@ module OMQ
 
               pull = OMQ::PULL.new(linger: ling, recv_timeout: tout)
               push = OMQ::PUSH.new(linger: ling, send_timeout: tout)
+              pull.reconnect_interval = rivl if rivl
+              push.reconnect_interval = rivl if rivl
               pull.connect(purl)
               push.connect(surl)
 

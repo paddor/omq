@@ -40,6 +40,7 @@ def make_config(type_name:, **overrides)
     delay:           nil,
     timeout:         nil,
     linger:          5,
+    reconnect_ivl:   nil,
     conflate:        false,
     compress:        false,
     expr:            nil,

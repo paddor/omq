@@ -285,6 +285,7 @@ module OMQ
         delay:            nil,
         timeout:          nil,
         linger:           5,
+        reconnect_ivl:    nil,
         conflate:         false,
         compress:         false,
         expr:             nil,
@@ -334,6 +335,14 @@ module OMQ
         o.on("-d", "--delay SECS",    Float, "Delay before first send")  { |v| opts[:delay] = v }
         o.on("-t", "--timeout SECS", Float, "Send/receive timeout")       { |v| opts[:timeout] = v }
         o.on("-l", "--linger SECS",  Float, "Drain time on close (default 5)") { |v| opts[:linger] = v }
+        o.on("--reconnect-ivl IVL", "Reconnect interval: SECS or MIN..MAX (default 0.1)") { |v|
+          opts[:reconnect_ivl] = if v.include?("..")
+                                   lo, hi = v.split("..", 2)
+                                   Float(lo)..Float(hi)
+                                 else
+                                   Float(v)
+                                 end
+        }
 
         o.separator "\nDelivery:"
         o.on("--conflate", "Keep only last message per subscriber (PUB/RADIO)") { opts[:conflate] = true }
