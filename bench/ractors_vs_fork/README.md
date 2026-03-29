@@ -51,11 +51,11 @@ main──send┬─→│ Ractor │─┬─port──main
 Ruby 4.0.2 +YJIT, Linux x86_64 (1000 tasks):
 
 ```
-fork + OMQ     (4 processes):  278 tasks/s  (3.6s)
-Ractor::Port   (4 ractors):   215 tasks/s  (4.7s)
+fork + OMQ     (4 processes):  416 tasks/s  (2.4s)
+Ractor::Port   (4 ractors):   332 tasks/s  (3.0s)
 ```
 
-Fork + OMQ is faster, simpler, and works on every Ruby since 1.8.
+Fork + OMQ is faster and simpler.
 Ractors are still experimental and come with isolation constraints
 (shareable objects, no closures, no instance variables across boundaries).
 

@@ -48,15 +48,15 @@ under heavier real-world load (multiple producers, slower consumers).
 
 | Transport | msg/s  |
 |-----------|--------|
-| ipc       | 160k   |
-| tcp       | 140k   |
+| ipc       | 165k   |
+| tcp       | 173k   |
 
 #### PUB/SUB
 
 | Transport | 1 sub | 5 subs | 10 subs |
 |-----------|-------|--------|---------|
-| ipc       | 165k  | 42k    | 17k     |
-| tcp       | 156k  | 37k    | 18k     |
+| ipc       | 189k  | 42k    | 21k     |
+| tcp       | 178k  | 45k    | 19k     |
 
 ## Why
 

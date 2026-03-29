@@ -12,10 +12,10 @@ Measured with `benchmark-ips` on Linux x86_64, Ruby 4.0.2 +YJIT (epoll).
 
 | Message size | inproc | ipc | tcp |
 |---|---|---|---|
-| 64 B | 216k | 44k | 32k |
-| 256 B | 216k | 31k | 31k |
-| 1024 B | 225k | 32k | 30k |
-| 4096 B | 227k | 28k | 29k |
+| 64 B | 229k | 48k | 36k |
+| 256 B | 228k | 42k | 32k |
+| 1024 B | 233k | 41k | 33k |
+| 4096 B | 229k | 37k | 31k |
 
 ## Latency (req/rep roundtrip)
 
@@ -28,7 +28,7 @@ Measured with `benchmark-ips` on Linux x86_64, Ruby 4.0.2 +YJIT (epoll).
 
 | | inproc | ipc | tcp |
 |---|---|---|---|
-| roundtrip | 11 µs | 52 µs | 65 µs |
+| roundtrip | 10 µs | 50 µs | 62 µs |
 
 ## io_uring
 
@@ -52,15 +52,15 @@ per cycle.
 
 | Transport | msg/s |
 |-----------|-------|
-| ipc | 160k |
-| tcp | 140k |
+| ipc | 165k |
+| tcp | 173k |
 
 ### PUB/SUB fan-out
 
 | Transport | 1 sub | 5 subs | 10 subs |
 |-----------|-------|--------|---------|
-| ipc | 165k | 42k | 17k |
-| tcp | 156k | 37k | 18k |
+| ipc | 189k | 42k | 21k |
+| tcp | 178k | 45k | 19k |
 
 ## Running
 

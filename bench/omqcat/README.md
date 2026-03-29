@@ -18,8 +18,8 @@ Measured on Linux x86_64, Ruby 4.0.2 +YJIT (io_uring).
 
 | Transport | msg/s |
 |-----------|-------|
-| tcp | 126k |
-| ipc | 56k |
+| tcp | 19k |
+| ipc | 20k |
 
 ## Latency (REQ/REP, `-D "ping" -i 0`)
 
@@ -35,15 +35,27 @@ Measured on Linux x86_64, Ruby 4.0.2 +YJIT (io_uring).
 
 | Transport | µs/roundtrip |
 |-----------|-------------|
-| tcp | 170 |
-| ipc | 179 |
+| tcp | 657 |
+| ipc | 643 |
 
-The overhead vs the direct Ruby API (~2x throughput, ~3x latency) comes
-from stdin/stdout line processing per message. This is expected for a CLI tool.
+## Pipeline (4-worker fib)
+
+```
+┌──────────┐     ┌────────┐     ┌──────┐
+│ producer │─TCP─│ worker │─TCP─│ sink │
+│ PUSH     │     │ ×4     │     │ PULL │
+└──────────┘     └────────┘     └──────┘
+```
+
+| N | msg/s |
+|---|-------|
+| 1000 | 288 |
+| 5000 | 831 |
 
 ## Running
 
 ```sh
 sh bench/omqcat/throughput.sh [count]   # default: 10000
 sh bench/omqcat/latency.sh [count]      # default: 1000
+sh bench/omqcat/pipeline.sh [count]     # default: 1000
 ```

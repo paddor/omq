@@ -5,7 +5,7 @@
 # Topology:
 #
 #   ┌──────────┐     ┌────────┐     ┌──────┐
-#   │ producer │─TCP─│ worker │─TCP─│ sink │
+#   │ producer │─TCP─│ worker │─TCP─│ sink │─ awk sum
 #   │ PUSH     │     │ ×4     │     │ PULL │
 #   └──────────┘     └────────┘     └──────┘
 #
@@ -31,8 +31,9 @@ echo
 # ── Sink: PULL results ────────────────────────────────────────────
 
 $OMQCAT pull --bind tcp://:$SINK_PORT \
-  --transient --quiet \
-  > /dev/null 2>/dev/null &
+  --transient \
+  2>/dev/null \
+| awk '{ s += $1 } END { print s }' > "/tmp/omq_bench_sum_$$" &
 SINK_PID=$!
 
 # ── Workers: PULL → fib → PUSH ───────────────────────────────────
@@ -72,9 +73,11 @@ END=$(ruby -e 'puts Process.clock_gettime(Process::CLOCK_MONOTONIC)')
 ELAPSED=$(ruby -e "puts ($END - $START).round(3)")
 RATE=$(ruby -e "puts ($N.to_f / ($END - $START)).round(1)")
 
-echo "  $WORKERS workers: $RATE msg/s ($N messages in ${ELAPSED}s)"
+SUM=$(cat "/tmp/omq_bench_sum_$$")
+echo "  $WORKERS workers: $RATE msg/s ($N messages in ${ELAPSED}s, sum=$SUM)"
 
 # Clean up
+rm -f "/tmp/omq_bench_sum_$$"
 for pid in $WORKER_PIDS; do
   kill $pid 2>/dev/null
 done
