@@ -17,7 +17,7 @@ Gem::Specification.new do |s|
 
   s.files      = Dir["lib/**/*.rb", "exe/*", "README.md", "LICENSE", "CHANGELOG.md"]
   s.bindir     = "exe"
-  s.executables = ["omqcat"]
+  s.executables = ["omq"]
 
   s.add_dependency "async", "~> 2.38"
   s.add_dependency "io-stream", "~> 0.11"

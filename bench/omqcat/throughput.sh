@@ -1,16 +1,16 @@
 #!/bin/sh
 #
-# omqcat throughput benchmark (PUSH/PULL)
+# omq throughput benchmark (PUSH/PULL)
 #
-# Usage: sh bench/omqcat/throughput.sh [count]
+# Usage: sh bench/omq/throughput.sh [count]
 #
 set -u
 
-OMQCAT="ruby --yjit -Ilib exe/omqcat"
+OMQ="ruby --yjit -Ilib exe/omq"
 N=${1:-10000}
 PORT=18100
 
-echo "omqcat throughput benchmark — $N messages"
+echo "omq throughput benchmark — $N messages"
 echo
 
 for transport in tcp ipc; do
@@ -19,18 +19,18 @@ for transport in tcp ipc; do
     CONN="tcp://localhost:$PORT"
     PORT=$((PORT + 1))
   else
-    ADDR="ipc://@omqcat_bench_tp_$$"
+    ADDR="ipc://@omq_bench_tp_$$"
     CONN="$ADDR"
   fi
 
   # Start receiver
-  $OMQCAT pull -b "$ADDR" -n $N -q 2>/dev/null &
+  $OMQ pull -b "$ADDR" -n $N -q 2>/dev/null &
   PULL_PID=$!
   sleep 0.5
 
   # Generate N messages and pipe through push
   START=$(ruby -e 'puts Process.clock_gettime(Process::CLOCK_MONOTONIC)')
-  seq $N | $OMQCAT push -c "$CONN" 2>/dev/null
+  seq $N | $OMQ push -c "$CONN" 2>/dev/null
   wait $PULL_PID 2>/dev/null
   END=$(ruby -e 'puts Process.clock_gettime(Process::CLOCK_MONOTONIC)')
 

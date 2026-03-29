@@ -1,36 +1,36 @@
 #!/bin/sh
 #
-# omqcat pipeline benchmark
+# omq pipeline benchmark
 #
 # Topology:
 #
-#   ┌──────────┐     ┌────────┐     ┌──────┐
-#   │ producer │─TCP─│ worker │─TCP─│ sink │─ awk sum
-#   │ PUSH     │     │ ×4     │     │ PULL │
-#   └──────────┘     └────────┘     └──────┘
+#   +----------+     +--------+     +------+
+#   | producer |-TCP-| worker |-TCP-| sink |- awk sum
+#   | PUSH     |     | x4     |     | PULL |
+#   +----------+     +--------+     +------+
 #
 # Producer sends N integers (cycling 1..28).
 # Each worker computes fib(n) and forwards the result.
 # Workers exit via --timeout when idle — no sentinels needed.
 # Sink exits via --transient when all workers disconnect.
 #
-# Usage: sh bench/omqcat/pipeline.sh [count]
+# Usage: sh bench/omq/pipeline.sh [count]
 #
 set -u
 
-OMQCAT="ruby --yjit -Ilib exe/omqcat"
+OMQ="ruby --yjit -Ilib exe/omq"
 BENCH_DIR=$(cd "$(dirname "$0")" && pwd)
 N=${1:-1000}
 WORKERS=4
 WORK_PORT=$((19000 + $$ % 500))
 SINK_PORT=$((WORK_PORT + 1))
 
-echo "omqcat pipeline benchmark — $N messages, $WORKERS workers, fib(1..28)"
+echo "omq pipeline benchmark — $N messages, $WORKERS workers, fib(1..28)"
 echo
 
 # ── Sink: PULL results ────────────────────────────────────────────
 
-$OMQCAT pull --bind tcp://:$SINK_PORT \
+$OMQ pull --bind tcp://:$SINK_PORT \
   --transient \
   2>/dev/null \
 | awk '{ s += $1 } END { print s }' > "/tmp/omq_bench_sum_$$" &
@@ -41,11 +41,11 @@ SINK_PID=$!
 WORKER_PIDS=""
 i=0
 while [ $i -lt $WORKERS ]; do
-  $OMQCAT pull --connect tcp://localhost:$WORK_PORT --timeout 1 \
+  $OMQ pull --connect tcp://localhost:$WORK_PORT --timeout 1 \
     -r"$BENCH_DIR/fib.rb" \
     -e '[fib(Integer($F.first)).to_s]' \
     2>/dev/null \
-  | $OMQCAT push --connect tcp://localhost:$SINK_PORT --linger 0.5 \
+  | $OMQ push --connect tcp://localhost:$SINK_PORT --linger 0.5 \
     2>/dev/null &
   WORKER_PIDS="$WORKER_PIDS $!"
   i=$((i + 1))
@@ -62,7 +62,7 @@ sleep 1
 ruby --yjit -e "
 ints = (1..28).cycle
 $N.times { puts ints.next }
-" | $OMQCAT push --bind tcp://:$WORK_PORT --linger 2 2>/dev/null
+" | $OMQ push --bind tcp://:$WORK_PORT --linger 2 2>/dev/null
 
 # ── Wait for pipeline to drain ────────────────────────────────────
 

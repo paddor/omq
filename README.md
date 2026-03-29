@@ -142,56 +142,56 @@ Benchmarked with benchmark-ips on Linux x86_64 (Ruby 4.0.2 +YJIT):
 
 See [`bench/`](bench/) for full results and scripts.
 
-## omqcat — CLI tool
+## omq — CLI tool
 
-`omqcat` is a command-line tool for sending and receiving messages on any OMQ socket. Like `nngcat` from libnng, but with Ruby superpowers.
+`omq` is a command-line tool for sending and receiving messages on any OMQ socket. Like `nngcat` from libnng, but with Ruby superpowers.
 
 ```sh
 # Echo server
-omqcat rep -b tcp://:5555 --echo
+omq rep -b tcp://:5555 --echo
 
 # Upcase server in one line
-omqcat rep -b tcp://:5555 -e '$F.map(&:upcase)'
+omq rep -b tcp://:5555 -e '$F.map(&:upcase)'
 
 # Client
-echo "hello" | omqcat req -c tcp://localhost:5555
+echo "hello" | omq req -c tcp://localhost:5555
 # => HELLO
 
 # PUB/SUB
-omqcat sub -b tcp://:5556 -s "weather."  &
-echo "weather.nyc 72F" | omqcat pub -c tcp://localhost:5556 -d 0.3
+omq sub -b tcp://:5556 -s "weather."  &
+echo "weather.nyc 72F" | omq pub -c tcp://localhost:5556 -d 0.3
 
 # Pipeline with filtering
-tail -f /var/log/syslog | omqcat push -c tcp://collector:5557
-omqcat pull -b tcp://:5557 -e '$F.first.include?("error") ? $F : nil'
+tail -f /var/log/syslog | omq push -c tcp://collector:5557
+omq pull -b tcp://:5557 -e '$F.first.include?("error") ? $F : nil'
 
 # Multipart messages via tabs
-printf "routing-key\tpayload data" | omqcat push -c tcp://localhost:5557
-omqcat pull -b tcp://:5557
+printf "routing-key\tpayload data" | omq push -c tcp://localhost:5557
+omq pull -b tcp://:5557
 # => routing-key	payload data
 
 # JSONL for structured data
-echo '["key","value"]' | omqcat push -c tcp://localhost:5557 -J
-omqcat pull -b tcp://:5557 -J
+echo '["key","value"]' | omq push -c tcp://localhost:5557 -J
+omq pull -b tcp://:5557 -J
 
 # Zstandard compression
-omqcat push -c tcp://remote:5557 -z < data.txt
-omqcat pull -b tcp://:5557 -z
+omq push -c tcp://remote:5557 -z < data.txt
+omq pull -b tcp://:5557 -z
 
 # CURVE encryption
-omqcat rep -b tcp://:5555 -D "secret" --curve-server
+omq rep -b tcp://:5555 -D "secret" --curve-server
 # prints: OMQ_SERVER_KEY='...'
-omqcat req -c tcp://localhost:5555 --curve-server-key '...'
+omq req -c tcp://localhost:5555 --curve-server-key '...'
 ```
 
 The `-e` flag runs Ruby inside the socket instance — the full socket API (`self <<`, `send`, `subscribe`, ...) is available. Use `-r` to require gems:
 
 ```sh
-omqcat sub -c tcp://localhost:5556 -s "" -r json \
+omq sub -c tcp://localhost:5556 -s "" -r json \
   -e 'JSON.parse($F.first)["temperature"]'
 ```
 
-Formats: `--ascii` (default, tab-separated), `--quoted`, `--raw`, `--jsonl`, `--msgpack`. See `omqcat --help` for all options.
+Formats: `--ascii` (default, tab-separated), `--quoted`, `--raw`, `--jsonl`, `--msgpack`. See `omq --help` for all options.
 
 ## Interop with native ZMQ
 

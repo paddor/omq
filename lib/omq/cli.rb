@@ -18,14 +18,14 @@ module OMQ
         └─────┘  "HELLO"    └─────┘
 
         # terminal 1: echo server
-        omqcat rep --bind tcp://:5555 --eval '$F.map(&:upcase)'
+        omq rep --bind tcp://:5555 --eval '$F.map(&:upcase)'
 
         # terminal 2: send a request
-        echo "hello" | omqcat req --connect tcp://localhost:5555
+        echo "hello" | omq req --connect tcp://localhost:5555
 
         # or over IPC (unix socket, single machine)
-        omqcat rep --bind ipc:///tmp/echo.sock --echo &
-        echo "hello" | omqcat req --connect ipc:///tmp/echo.sock
+        omq rep --bind ipc:///tmp/echo.sock --echo &
+        echo "hello" | omq req --connect ipc:///tmp/echo.sock
 
       ── Publish / Subscribe ──────────────────────────────────────
 
@@ -34,10 +34,10 @@ module OMQ
         └─────┘                     └─────┘
 
         # terminal 1: subscriber (all topics by default)
-        omqcat sub --bind tcp://:5556
+        omq sub --bind tcp://:5556
 
         # terminal 2: publisher (needs --delay for subscription to propagate)
-        echo "weather.nyc 72F" | omqcat pub --connect tcp://localhost:5556 --delay 1
+        echo "weather.nyc 72F" | omq pub --connect tcp://localhost:5556 --delay 1
 
       ── Pipeline ─────────────────────────────────────────────────
 
@@ -46,14 +46,14 @@ module OMQ
         └──────┘           └──────┘
 
         # terminal 1: worker
-        omqcat pull --bind tcp://:5557
+        omq pull --bind tcp://:5557
 
         # terminal 2: send tasks
-        echo "task 1" | omqcat push --connect tcp://localhost:5557
+        echo "task 1" | omq push --connect tcp://localhost:5557
 
         # or over IPC (unix socket)
-        omqcat pull --bind ipc:///tmp/pipeline.sock &
-        echo "task 1" | omqcat push --connect ipc:///tmp/pipeline.sock
+        omq pull --bind ipc:///tmp/pipeline.sock &
+        echo "task 1" | omq push --connect ipc:///tmp/pipeline.sock
 
       ── CLIENT / SERVER (draft) ──────────────────────────────────
 
@@ -63,39 +63,39 @@ module OMQ
         └────────┘  "HELLO"   └────────┘
 
         # terminal 1: upcasing server
-        omqcat server --bind tcp://:5555 --eval '$F.map(&:upcase)'
+        omq server --bind tcp://:5555 --eval '$F.map(&:upcase)'
 
         # terminal 2: client
-        echo "hello" | omqcat client --connect tcp://localhost:5555
+        echo "hello" | omq client --connect tcp://localhost:5555
 
       ── Formats ──────────────────────────────────────────────────
 
         # ascii (default) — non-printable replaced with dots
-        omqcat pull --bind tcp://:5557 --ascii
+        omq pull --bind tcp://:5557 --ascii
 
         # quoted — lossless, round-trippable (uses String#dump escaping)
-        omqcat pull --bind tcp://:5557 --quoted
+        omq pull --bind tcp://:5557 --quoted
 
         # JSON Lines — structured, multipart as arrays
-        echo '["key","value"]' | omqcat push --connect tcp://localhost:5557 --jsonl
-        omqcat pull --bind tcp://:5557 --jsonl
+        echo '["key","value"]' | omq push --connect tcp://localhost:5557 --jsonl
+        omq pull --bind tcp://:5557 --jsonl
 
         # multipart via tabs
-        printf "routing-key\tpayload" | omqcat push --connect tcp://localhost:5557
+        printf "routing-key\tpayload" | omq push --connect tcp://localhost:5557
 
       ── Compression ──────────────────────────────────────────────
 
         # both sides must use --compress
-        omqcat pull --bind tcp://:5557 --compress &
-        echo "compressible data" | omqcat push --connect tcp://localhost:5557 --compress
+        omq pull --bind tcp://:5557 --compress &
+        echo "compressible data" | omq push --connect tcp://localhost:5557 --compress
 
       ── CURVE Encryption ─────────────────────────────────────────
 
         # server (prints OMQ_SERVER_KEY=...)
-        omqcat rep --bind tcp://:5555 --echo --curve-server
+        omq rep --bind tcp://:5555 --echo --curve-server
 
         # client (paste the server's key)
-        echo "secret" | omqcat req --connect tcp://localhost:5555 \
+        echo "secret" | omq req --connect tcp://localhost:5555 \
           --curve-server-key '<key from server>'
 
       ── ROUTER / DEALER ──────────────────────────────────────────
@@ -106,24 +106,24 @@ module OMQ
         └────────┘          └────────┘
 
         # terminal 1: router shows identity + message
-        omqcat router --bind tcp://:5555
+        omq router --bind tcp://:5555
 
         # terminal 2: dealer with identity
-        echo "hello" | omqcat dealer --connect tcp://localhost:5555 \
+        echo "hello" | omq dealer --connect tcp://localhost:5555 \
           --identity worker-1
 
       ── Ruby Eval ────────────────────────────────────────────────
 
         # filter: only pass messages containing "error"
-        omqcat pull --bind tcp://:5557 \
+        omq pull --bind tcp://:5557 \
           --eval '$F.first.include?("error") ? $F : nil'
 
         # transform with gems
-        omqcat sub --connect tcp://localhost:5556 --require json \
+        omq sub --connect tcp://localhost:5556 --require json \
           --eval 'JSON.parse($F.first)["temperature"]'
 
         # require a local file, use its methods in --eval
-        omqcat rep --bind tcp://:5555 --require ./transform.rb \
+        omq rep --bind tcp://:5555 --require ./transform.rb \
           --eval 'upcase_all($F)'
     TEXT
 
@@ -172,7 +172,7 @@ module OMQ
         runner = Runner.new(opts, klass)
         runner.call(task)
       rescue IO::TimeoutError
-        $stderr.puts "omqcat: timeout" unless opts[:quiet]
+        $stderr.puts "omq: timeout" unless opts[:quiet]
         exit 2
       end
     end
@@ -203,7 +203,7 @@ module OMQ
       }
 
       parser = OptionParser.new do |o|
-        o.banner = "Usage: omqcat TYPE [options]\n\n" \
+        o.banner = "Usage: omq TYPE [options]\n\n" \
                    "Types: req, rep, pub, sub, push, pull, pair, dealer, router\n" \
                    "Draft: client, server, radio, dish, scatter, gather, channel, peer\n\n"
 
@@ -260,7 +260,7 @@ module OMQ
         o.on("-v", "--verbose",            "Print connection events to stderr")      { opts[:verbose] = true }
         o.on("-q", "--quiet",              "Suppress message output")                { opts[:quiet] = true }
         o.on(      "--transient", "Exit when all peers have disconnected")            { opts[:transient] = true }
-        o.on("-V", "--version")                                      { require "omq"; puts "omqcat #{OMQ::VERSION}"; exit }
+        o.on("-V", "--version")                                      { require "omq"; puts "omq #{OMQ::VERSION}"; exit }
         o.on("-h")                                                   { puts o; exit }
         o.on(      "--help")                                         { page "#{o}\n#{EXAMPLES}"; exit }
         o.on(      "--examples")                                     { page EXAMPLES; exit }

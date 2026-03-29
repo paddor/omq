@@ -1,16 +1,16 @@
 #!/bin/sh
 #
-# omqcat latency benchmark (REQ/REP roundtrip)
+# omq latency benchmark (REQ/REP roundtrip)
 #
-# Usage: sh bench/omqcat/latency.sh [count]
+# Usage: sh bench/omq/latency.sh [count]
 #
 set -u
 
-OMQCAT="ruby --yjit -Ilib exe/omqcat"
+OMQ="ruby --yjit -Ilib exe/omq"
 N=${1:-1000}
 PORT=18200
 
-echo "omqcat latency benchmark — $N roundtrips"
+echo "omq latency benchmark — $N roundtrips"
 echo
 
 for transport in tcp ipc; do
@@ -19,18 +19,18 @@ for transport in tcp ipc; do
     CONN="tcp://localhost:$PORT"
     PORT=$((PORT + 1))
   else
-    ADDR="ipc://@omqcat_bench_lat_$$"
+    ADDR="ipc://@omq_bench_lat_$$"
     CONN="$ADDR"
   fi
 
   # Start responder
-  $OMQCAT rep -b "$ADDR" -D "pong" -n $N -q 2>/dev/null &
+  $OMQ rep -b "$ADDR" -D "pong" -n $N -q 2>/dev/null &
   REP_PID=$!
   sleep 0.5
 
   # Run REQ ping loop
   START=$(ruby -e 'puts Process.clock_gettime(Process::CLOCK_MONOTONIC)')
-  $OMQCAT req -c "$CONN" -D "ping" -i 0 -n $N -q 2>/dev/null
+  $OMQ req -c "$CONN" -D "ping" -i 0 -n $N -q 2>/dev/null
   END=$(ruby -e 'puts Process.clock_gettime(Process::CLOCK_MONOTONIC)')
   wait $REP_PID 2>/dev/null
 
