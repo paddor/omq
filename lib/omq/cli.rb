@@ -7,6 +7,7 @@ module OMQ
     SOCKET_TYPE_NAMES = %w[
       req rep pub sub push pull pair dealer router
       client server radio dish scatter gather channel peer
+      pipe
     ].freeze
 
 
@@ -328,6 +329,7 @@ module OMQ
     # @return [Class]
     #
     def resolve_socket_class(type_name)
+      return nil if type_name == "pipe"
       OMQ.const_get(type_name.upcase)
     end
 
@@ -340,7 +342,12 @@ module OMQ
     def validate!(opts)
       type_name = opts[:type_name]
 
-      abort "At least one --connect or --bind is required"   if opts[:connects].empty? && opts[:binds].empty?
+      if type_name == "pipe"
+        total = opts[:connects].size + opts[:binds].size
+        abort "pipe requires exactly 2 endpoints (pull-side and push-side)" if total != 2
+      else
+        abort "At least one --connect or --bind is required" if opts[:connects].empty? && opts[:binds].empty?
+      end
       abort "--data and --file are mutually exclusive"        if opts[:data] && opts[:file]
       abort "--subscribe is only valid for SUB"               if !opts[:subscribes].empty? && type_name != "sub"
       abort "--join is only valid for DISH"                   if !opts[:joins].empty? && type_name != "dish"
@@ -460,6 +467,8 @@ module OMQ
 
 
       def call(task)
+        return pipe_call(task) if @type_name == "pipe"
+
         sock_opts = { linger: @opts[:linger] }
         sock_opts[:conflate] = true if @opts[:conflate] && %w[pub radio].include?(@type_name)
         @sock = @klass.new(nil, **sock_opts)
@@ -493,6 +502,51 @@ module OMQ
         run_loop(task)
       ensure
         @sock&.close
+      end
+
+
+      def pipe_call(task)
+        endpoints = @opts[:connects] + @opts[:binds]
+        pull_url  = endpoints[0]
+        push_url  = endpoints[1]
+
+        pull = OMQ::PULL.new(nil, linger: @opts[:linger])
+        push = OMQ::PUSH.new(nil, linger: @opts[:linger])
+        pull.recv_timeout = @opts[:timeout] if @opts[:timeout]
+        push.send_timeout = @opts[:timeout] if @opts[:timeout]
+
+        @opts[:binds].include?(pull_url) ? pull.bind(pull_url) : pull.connect(pull_url)
+        @opts[:binds].include?(push_url) ? push.bind(push_url) : push.connect(push_url)
+
+        compile_expr
+        @sock = pull  # for instance_exec in eval_expr
+
+        pipe_barrier = nil
+        if @opts[:transient]
+          pipe_barrier = Async::Promise.new
+          task.async do
+            pipe_barrier.wait
+            pull.all_peers_gone.wait unless pull.connection_count == 0
+            pull.reconnect_enabled = false
+            task.stop
+          end
+        end
+
+        n = @opts[:count]
+        i = 0
+        loop do
+          parts = @fmt.decompress(pull.receive)
+          pipe_barrier.resolve(true) if pipe_barrier && !pipe_barrier.resolved?
+          parts = eval_expr(parts)
+          if parts && !parts.empty?
+            push.send(@fmt.compress(parts))
+          end
+          i += 1
+          break if n && n > 0 && i >= n
+        end
+      ensure
+        pull&.close
+        push&.close
       end
 
 
