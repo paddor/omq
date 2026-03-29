@@ -49,7 +49,7 @@ PRODUCER_PID=$!
 $OMQ pipe -c $WORK -c $SINK -P $WORKERS \
   -r"$BENCH_DIR/fib.rb" \
   -e '[fib(Integer($F.first)).to_s]' \
-  --transient -t 2 2>/dev/null &
+  --transient -t 1 2>/dev/null &
 PIPE_PID=$!
 
 # ── Wait for sink to finish ─────────────────────────────────

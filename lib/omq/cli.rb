@@ -180,6 +180,10 @@ module OMQ
         # require a local file, use its methods in --eval
         omq rep --bind tcp://:5555 --require ./transform.rb \
           --eval 'upcase_all($F)'
+
+        # next skips, break stops — regexps match against $_
+        omq pull --bind tcp://:5557 \
+          --eval 'next if /^#/; break if /quit/; $F'
     TEXT
 
     module_function
