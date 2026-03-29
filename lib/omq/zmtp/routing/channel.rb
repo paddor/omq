@@ -57,7 +57,7 @@ module OMQ
         private
 
         def start_send_pump(conn)
-          @send_pump = Reactor.spawn_pump(annotation: "send pump") do
+          @send_pump = @engine.parent_task.async(transient: true, annotation: "send pump") do
             loop do
               batch = [@send_queue.dequeue]
               Routing.drain_send_queue(@send_queue, batch)

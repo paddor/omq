@@ -49,9 +49,11 @@ module OMQ
         @peer_connected       = Async::Promise.new
         @all_peers_gone       = Async::Promise.new
         @reconnect_enabled    = true
+        @parent_task          = nil
+        @connection_promises  = {} # connection => Async::Promise
       end
 
-      attr_reader :peer_connected, :all_peers_gone, :connections
+      attr_reader :peer_connected, :all_peers_gone, :connections, :parent_task
       attr_writer :reconnect_enabled
 
       # Binds to an endpoint.
@@ -61,6 +63,7 @@ module OMQ
       # @raise [ArgumentError] on unsupported transport
       #
       def bind(endpoint)
+        capture_parent_task
         transport = transport_for(endpoint)
         listener = transport.bind(endpoint, self)
         @listeners << listener
@@ -74,6 +77,7 @@ module OMQ
       # @return [void]
       #
       def connect(endpoint)
+        capture_parent_task
         @connected_endpoints << endpoint
         if endpoint.start_with?("inproc://")
           # Inproc connect is synchronous and instant
@@ -131,7 +135,7 @@ module OMQ
       # @return [void]
       #
       def handle_accepted(io, endpoint: nil)
-        setup_connection(io, as_server: true, endpoint: endpoint)
+        spawn_connection(io, as_server: true, endpoint: endpoint)
       end
 
       # Called by a transport when an outgoing connection is established.
@@ -140,7 +144,7 @@ module OMQ
       # @return [void]
       #
       def handle_connected(io, endpoint: nil)
-        setup_connection(io, as_server: false, endpoint: endpoint)
+        spawn_connection(io, as_server: false, endpoint: endpoint)
       end
 
       # Called by inproc transport with a pre-validated DirectPipe.
@@ -210,6 +214,10 @@ module OMQ
         @routing.connection_removed(connection)
         connection.close
 
+        # Signal the connection task to exit.
+        done = @connection_promises.delete(connection)
+        done&.resolve(true)
+
         # Resolve all_peers_gone once: had peers, now have none.
         if @peer_connected.resolved? && @connections.empty?
           @all_peers_gone.resolve(true)
@@ -265,6 +273,26 @@ module OMQ
 
       private
 
+      def capture_parent_task
+        @parent_task ||= Async::Task.current? ? Async::Task.current : nil
+      end
+
+      # Spawns an isolated connection task as a sibling of accept/reconnect
+      # tasks. All per-connection children (heartbeat, recv pump, reaper)
+      # live inside this task. When the connection dies, the entire subtree
+      # is cleaned up by Async.
+      #
+      def spawn_connection(io, as_server:, endpoint: nil)
+        task = @parent_task&.async(transient: true, annotation: "conn #{endpoint}") do
+          done = Async::Promise.new
+          setup_connection(io, as_server: as_server, endpoint: endpoint, done: done)
+          done.wait
+        rescue ProtocolError, *CONNECTION_LOST
+          # handshake failed or connection lost — subtree cleaned up
+        end
+        @tasks << task if task
+      end
+
       # Waits for the send queue to drain.
       #
       # @param timeout [Numeric, nil] max seconds to wait (nil = forever)
@@ -282,7 +310,7 @@ module OMQ
         end
       end
 
-      def setup_connection(io, as_server:, endpoint: nil)
+      def setup_connection(io, as_server:, endpoint: nil, done: nil)
         conn = Connection.new(
           io,
           socket_type:       @socket_type.to_s,
@@ -298,6 +326,7 @@ module OMQ
         conn.start_heartbeat
         @connections << conn
         @connection_endpoints[conn] = endpoint if endpoint
+        @connection_promises[conn]  = done if done
         @routing.connection_added(conn)
         @peer_connected.resolve(conn)
       rescue ProtocolError, *CONNECTION_LOST

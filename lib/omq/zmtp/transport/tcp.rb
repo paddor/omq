@@ -26,16 +26,9 @@ module OMQ
             resolved    = "tcp://#{host_part}:#{actual_port}"
 
             accept_task = Reactor.spawn_pump(annotation: "tcp accept #{resolved}") do
-              parent = Async::Task.current.parent
               loop do
                 client = server.accept
-                # Spawn connection setup as a sibling task so its pump
-                # children are not nested under the accept task.
-                parent.async(transient: true, annotation: "tcp conn #{resolved}") do
-                  engine.handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: resolved)
-                rescue ProtocolError, *ZMTP::CONNECTION_LOST
-                  # peer disconnected during handshake
-                end
+                engine.handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: resolved)
               end
             rescue IOError
               # server closed

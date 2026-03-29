@@ -32,7 +32,7 @@ module OMQ
           @connections << connection
           signal_connection_available
           start_send_pump unless @send_pump_started
-          start_monitor(connection)
+          start_reaper(connection)
         end
 
         # @param connection [Connection]
@@ -55,13 +55,12 @@ module OMQ
 
         private
 
-        # Monitors a connection for disconnection.
-        # Write-only sockets have no recv pump, so without this monitor
-        # a dead peer is only detected on the next send — which may
-        # succeed if the kernel send buffer absorbs the data.
+        # Detects peer disconnection on write-only sockets. Without
+        # this, a dead peer is only noticed on the next send — which
+        # may succeed if the kernel send buffer absorbs the data.
         #
-        def start_monitor(conn)
-          @tasks << Reactor.spawn_pump(annotation: "monitor") do
+        def start_reaper(conn)
+          @tasks << Reactor.spawn_pump(annotation: "reaper") do
             conn.receive_message # blocks until peer disconnects
           rescue *ZMTP::CONNECTION_LOST
             @engine.connection_lost(conn)

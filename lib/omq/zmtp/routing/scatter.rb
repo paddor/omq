@@ -32,7 +32,7 @@ module OMQ
           @connections << connection
           signal_connection_available
           start_send_pump unless @send_pump_started
-          start_monitor(connection)
+          start_reaper(connection)
         end
 
         # @param connection [Connection]
@@ -55,8 +55,8 @@ module OMQ
 
         private
 
-        def start_monitor(conn)
-          @tasks << Reactor.spawn_pump(annotation: "monitor") do
+        def start_reaper(conn)
+          @tasks << Reactor.spawn_pump(annotation: "reaper") do
             conn.receive_message
           rescue *ZMTP::CONNECTION_LOST
             @engine.connection_lost(conn)
