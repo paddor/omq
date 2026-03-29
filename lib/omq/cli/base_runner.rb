@@ -51,8 +51,9 @@ module OMQ
         sock                   = @klass.new(**sock_opts)
         sock.recv_timeout      = config.timeout if config.timeout
         sock.send_timeout      = config.timeout if config.timeout
-        sock.reconnect_interval = config.reconnect_ivl if config.reconnect_ivl
-        sock.identity          = config.identity if config.identity
+        sock.reconnect_interval  = config.reconnect_ivl if config.reconnect_ivl
+        sock.heartbeat_interval  = config.heartbeat_ivl if config.heartbeat_ivl
+        sock.identity            = config.identity if config.identity
         sock.router_mandatory  = true if config.type_name == "router"
         sock
       end

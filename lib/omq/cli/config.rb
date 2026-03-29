@@ -26,6 +26,7 @@ module OMQ
       :timeout,
       :linger,
       :reconnect_ivl,
+      :heartbeat_ivl,
       :conflate,
       :compress,
       :expr,

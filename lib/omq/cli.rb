@@ -255,13 +255,7 @@ module OMQ
       opts[:has_zstd]     = begin; require "zstd-ruby"; true; rescue LoadError; false; end
       opts[:stdin_is_tty] = $stdin.tty?
 
-      opts[:endpoints].freeze
-      opts[:connects].freeze
-      opts[:binds].freeze
-      opts[:subscribes].freeze
-      opts[:joins].freeze
-
-      Config.new(**opts)
+      Ractor.make_shareable(Config.new(**opts))
     end
 
 
@@ -286,6 +280,7 @@ module OMQ
         timeout:          nil,
         linger:           5,
         reconnect_ivl:    nil,
+        heartbeat_ivl:    nil,
         conflate:         false,
         compress:         false,
         expr:             nil,
@@ -343,6 +338,7 @@ module OMQ
                                    Float(v)
                                  end
         }
+        o.on("--heartbeat-ivl SECS", Float, "ZMTP heartbeat interval (detects dead peers)") { |v| opts[:heartbeat_ivl] = v }
 
         o.separator "\nDelivery:"
         o.on("--conflate", "Keep only last message per subscriber (PUB/RADIO)") { opts[:conflate] = true }

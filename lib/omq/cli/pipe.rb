@@ -30,8 +30,10 @@ module OMQ
 
         @pull = OMQ::PULL.new(linger: config.linger, recv_timeout: config.timeout)
         @push = OMQ::PUSH.new(linger: config.linger, send_timeout: config.timeout)
-        @pull.reconnect_interval = config.reconnect_ivl if config.reconnect_ivl
-        @push.reconnect_interval = config.reconnect_ivl if config.reconnect_ivl
+        @pull.reconnect_interval  = config.reconnect_ivl if config.reconnect_ivl
+        @push.reconnect_interval  = config.reconnect_ivl if config.reconnect_ivl
+        @pull.heartbeat_interval  = config.heartbeat_ivl if config.heartbeat_ivl
+        @push.heartbeat_interval  = config.heartbeat_ivl if config.heartbeat_ivl
 
         pull_ep.bind? ? @pull.bind(pull_ep.url) : @pull.connect(pull_ep.url)
         push_ep.bind? ? @push.bind(push_ep.url) : @push.connect(push_ep.url)
@@ -72,42 +74,31 @@ module OMQ
 
 
       def run_parallel
-        pull_url      = config.endpoints[0].url
-        push_url      = config.endpoints[1].url
-        expr          = config.expr
-        fmt_name      = config.format
-        compress      = config.compress
-        linger        = config.linger
-        timeout       = config.timeout
-        reconnect_ivl = config.reconnect_ivl
-        transient     = config.transient
-        count         = config.count
-
         workers = config.parallel.times.map do
-          Ractor.new(pull_url, push_url, expr, fmt_name, compress, linger, timeout, reconnect_ivl, transient, count) do
-            |purl, surl, xpr, fmt, comp, ling, tout, rivl, trans, cnt|
-
+          Ractor.new(config) do |cfg|
             $VERBOSE = nil
             Console.logger = Console::Logger.new(Console::Output::Null.new)
 
             Sync do |task|
               # Compile eval — rewrite $F to __F (proc parameter)
-              eval_proc = if xpr
-                           ractor_expr = xpr.gsub(/\$F\b/, "__F")
+              eval_proc = if cfg.expr
+                           ractor_expr = cfg.expr.gsub(/\$F\b/, "__F")
                            eval("proc { |__F| $_ = __F&.first; #{ractor_expr} }")
                          end
 
-              formatter = OMQ::CLI::Formatter.new(fmt, compress: comp)
+              formatter = OMQ::CLI::Formatter.new(cfg.format, compress: cfg.compress)
 
-              pull = OMQ::PULL.new(linger: ling, recv_timeout: tout)
-              push = OMQ::PUSH.new(linger: ling, send_timeout: tout)
-              pull.reconnect_interval = rivl if rivl
-              push.reconnect_interval = rivl if rivl
-              pull.connect(purl)
-              push.connect(surl)
+              pull = OMQ::PULL.new(linger: cfg.linger, recv_timeout: cfg.timeout)
+              push = OMQ::PUSH.new(linger: cfg.linger, send_timeout: cfg.timeout)
+              pull.reconnect_interval  = cfg.reconnect_ivl if cfg.reconnect_ivl
+              push.reconnect_interval  = cfg.reconnect_ivl if cfg.reconnect_ivl
+              pull.heartbeat_interval  = cfg.heartbeat_ivl if cfg.heartbeat_ivl
+              push.heartbeat_interval  = cfg.heartbeat_ivl if cfg.heartbeat_ivl
+              pull.connect(cfg.endpoints[0].url)
+              push.connect(cfg.endpoints[1].url)
 
-              if tout
-                task.with_timeout(tout) do
+              if cfg.timeout
+                task.with_timeout(cfg.timeout) do
                   push.peer_connected.wait
                   pull.peer_connected.wait
                 end
@@ -116,7 +107,7 @@ module OMQ
                 pull.peer_connected.wait
               end
 
-              if trans
+              if cfg.transient
                 task.async do
                   pull.all_peers_gone.wait
                   pull.reconnect_enabled = false
@@ -142,7 +133,7 @@ module OMQ
                   push.send(formatter.compress(parts))
                 end
                 i += 1
-                break if cnt && cnt > 0 && i >= cnt
+                break if cfg.count && cfg.count > 0 && i >= cfg.count
               end
             rescue Async::TimeoutError
               # exit cleanly on timeout

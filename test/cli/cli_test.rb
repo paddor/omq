@@ -41,6 +41,7 @@ def make_config(type_name:, **overrides)
     timeout:         nil,
     linger:          5,
     reconnect_ivl:   nil,
+    heartbeat_ivl:   nil,
     conflate:        false,
     compress:        false,
     expr:            nil,
