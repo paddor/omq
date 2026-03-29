@@ -7,22 +7,16 @@ describe "send_timeout" do
 
   it "raises IO::TimeoutError when send blocks longer than send_timeout" do
     Async do
-      # HWM=1 so second send will block waiting for a consumer
+      # No peer connected — the send queue (HWM=1) fills immediately
+      # and the second enqueue blocks until send_timeout fires.
       push = OMQ::PUSH.new(nil, send_hwm: 1, send_timeout: 0.1)
-      push.connect("inproc://timeout-send")
+      push.bind("ipc://@omq_test_send_timeout")
 
-      pull = OMQ::PULL.bind("inproc://timeout-send")
-
-      # First send fills the HWM
-      push.send("fill")
-
-      # Second send should time out
       assert_raises IO::TimeoutError do
-        push.send("overflow")
+        2.times { push.send("fill") }
       end
     ensure
       push&.close
-      pull&.close
     end
   end
 
