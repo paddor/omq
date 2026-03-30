@@ -7,9 +7,14 @@ Gem::Specification.new do |s|
   s.version  = OMQ::VERSION
   s.authors  = ["Patrik Wenger"]
   s.email    = ["paddor@gmail.com"]
-  s.summary  = "OMQ — pure Ruby ZeroMQ (ZMTP 3.1)"
+  s.summary  = "Pure Ruby ZMQ library + CLI"
   s.description = "Pure Ruby implementation of the ZMTP 3.1 wire protocol " \
-                  "(ZeroMQ) using the Async gem. No native libraries required."
+                  "(ZeroMQ) with all socket types (REQ/REP, PUB/SUB, PUSH/PULL, " \
+                  "DEALER/ROUTER, and draft types) and TCP/IPC/inproc transports. " \
+                  "Includes an `omq` CLI for composable message pipelines — " \
+                  "pipe, filter, and transform across processes with Ruby eval, " \
+                  "multiple formats (JSON, msgpack, marshal), Ractor parallelism, " \
+                  "and compression. No native libraries required."
   s.homepage = "https://github.com/zeromq/omq"
   s.license  = "ISC"
 
