@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.1 — 2026-03-30
+
+### Improved
+
+- **`pipe` in CLI help and examples** — added `pipe` to the help banner
+  as a virtual socket type (`PULL → eval → PUSH`) and added examples
+  showing single-worker, `-P` Ractor, and `--transient` usage.
+- **Pipeline benchmarks run from any directory** — `pipeline.sh` and
+  `pipeline_ractors.sh` now derive absolute paths from the script
+  location instead of assuming the working directory is the project root.
+
 ## 0.6.0 — 2026-03-30
 
 ### Added
