@@ -89,6 +89,7 @@ module OMQ
       #
       def connect(endpoint)
         capture_parent_task
+        validate_endpoint!(endpoint)
         @connected_endpoints << endpoint
         if endpoint.start_with?("inproc://")
           # Inproc connect is synchronous and instant
@@ -348,6 +349,7 @@ module OMQ
           wrapped
         end
         @routing.recv_queue.enqueue(nil) rescue nil
+        @peer_connected.resolve(nil) rescue nil
       end
 
 
@@ -462,7 +464,23 @@ module OMQ
               delay = ri.is_a?(Range) ? ri.begin : ri if delay == 0
             end
           end
+        rescue Async::Stop
+          # normal shutdown
+        rescue => error
+          signal_fatal_error(error)
         end
+      end
+
+
+      # Eagerly validates TCP hostnames so resolution errors fail
+      # on connect, not silently in the background reconnect loop.
+      # Reconnects still re-resolve (DNS may change), and transient
+      # resolution failures during reconnect are retried with backoff.
+      #
+      def validate_endpoint!(endpoint)
+        return unless endpoint.start_with?("tcp://")
+        host = URI.parse(endpoint.sub("tcp://", "http://")).hostname
+        Addrinfo.getaddrinfo(host, nil, nil, :STREAM) if host
       end
 
 

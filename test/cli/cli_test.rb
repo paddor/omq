@@ -496,7 +496,17 @@ describe "OMQ::CLI.parse_options" do
 
   it "collects multiple binds" do
     opts = OMQ::CLI.parse_options(["pull", "-b", "tcp://:1", "-b", "tcp://:2"])
-    assert_equal ["tcp://*:1", "tcp://*:2"], opts[:binds]
+    assert_equal ["tcp://localhost:1", "tcp://localhost:2"], opts[:binds]
+  end
+
+  it "expands tcp://*:PORT to 0.0.0.0" do
+    opts = OMQ::CLI.parse_options(["pull", "-b", "tcp://*:1234"])
+    assert_equal ["tcp://0.0.0.0:1234"], opts[:binds]
+  end
+
+  it "expands tcp://:PORT to localhost for connects" do
+    opts = OMQ::CLI.parse_options(["push", "-c", "tcp://:1234"])
+    assert_equal ["tcp://localhost:1234"], opts[:connects]
   end
 
   it "parses format flags" do

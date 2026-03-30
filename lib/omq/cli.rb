@@ -268,6 +268,12 @@ module OMQ
       rescue IO::TimeoutError, Async::TimeoutError
         $stderr.puts "omq: timeout" unless config.quiet
         exit 2
+      rescue OMQ::SocketDeadError => e
+        $stderr.puts "omq: #{e.cause.class}: #{e.cause.message}"
+        exit 1
+      rescue ::Socket::ResolutionError => e
+        $stderr.puts "omq: #{e.message}"
+        exit 1
       end
     end
 
@@ -415,9 +421,9 @@ module OMQ
 
       opts[:type_name] = type_name.downcase
 
-      normalize = ->(url) { url.sub(%r{\Atcp://:}, "tcp://*:") }
-      opts[:connects].map!(&normalize)
+      normalize = ->(url) { url.sub(%r{\Atcp://\*:}, "tcp://0.0.0.0:").sub(%r{\Atcp://:}, "tcp://localhost:") }
       opts[:binds].map!(&normalize)
+      opts[:connects].map!(&normalize)
       opts[:endpoints].map! { |ep| Endpoint.new(normalize.call(ep.url), ep.bind?) }
 
       opts

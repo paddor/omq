@@ -20,23 +20,38 @@ module OMQ
           def bind(endpoint, engine)
             host, port = parse_endpoint(endpoint)
             host = "0.0.0.0" if host == "*"
-            server = TCPServer.new(host, port)
-            actual_port = server.local_address.ip_port
-            host_part   = host.include?(":") ? "[#{host}]" : host
-            resolved    = "tcp://#{host_part}:#{actual_port}"
 
-            accept_task = Reactor.spawn_pump(annotation: "tcp accept #{resolved}") do
-              loop do
-                client = server.accept
-                Async::Task.current.defer_stop do
-                  engine.handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: resolved)
+            addrs = Addrinfo.getaddrinfo(host, port, nil, :STREAM, nil, ::Socket::AI_PASSIVE)
+            raise ::Socket::ResolutionError, "no addresses for #{host}" if addrs.empty?
+
+            servers      = []
+            accept_tasks = []
+            actual_port  = nil
+
+            addrs.each do |addr|
+              server = TCPServer.new(addr.ip_address, actual_port || port)
+              actual_port ||= server.local_address.ip_port
+              servers << server
+
+              ip        = addr.ip_address
+              host_part = ip.include?(":") ? "[#{ip}]" : ip
+              resolved  = "tcp://#{host_part}:#{actual_port}"
+
+              accept_tasks << Reactor.spawn_pump(annotation: "tcp accept #{resolved}") do
+                loop do
+                  client = server.accept
+                  Async::Task.current.defer_stop do
+                    engine.handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: resolved)
+                  end
                 end
+              rescue IOError
+                # server closed
               end
-            rescue IOError
-              # server closed
             end
 
-            Listener.new(resolved, server, accept_task, actual_port)
+            host_part = host.include?(":") ? "[#{host}]" : host
+            resolved  = "tcp://#{host_part}:#{actual_port}"
+            Listener.new(resolved, servers, accept_tasks, actual_port)
           end
 
           # Connects to a TCP endpoint.
@@ -81,19 +96,19 @@ module OMQ
           # @param accept_task [#stop] the accept loop handle
           # @param port [Integer] bound port number
           #
-          def initialize(endpoint, server, accept_task, port)
-            @endpoint    = endpoint
-            @server      = server
-            @accept_task = accept_task
-            @port        = port
+          def initialize(endpoint, servers, accept_tasks, port)
+            @endpoint     = endpoint
+            @servers      = servers
+            @accept_tasks = accept_tasks
+            @port         = port
           end
 
 
           # Stops the listener.
           #
           def stop
-            @accept_task.stop
-            @server.close rescue nil
+            @accept_tasks.each(&:stop)
+            @servers.each { |s| s.close rescue nil }
           end
         end
       end

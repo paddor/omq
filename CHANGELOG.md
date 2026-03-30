@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.6.4 — 2026-03-30
+
+### Added
+
+- **Dual-stack TCP bind** — `TCP.bind` resolves the hostname via
+  `Addrinfo.getaddrinfo` and binds to all returned addresses.
+  `tcp://localhost:PORT` now listens on both `127.0.0.1` and `::1`.
+- **Eager DNS validation on connect** — `Engine#connect` resolves TCP
+  hostnames upfront via `Addrinfo.getaddrinfo`. Unresolvable hostnames
+  raise `Socket::ResolutionError` immediately instead of failing silently
+  in the background reconnect loop.
+- **`Socket::ResolutionError` in `CONNECTION_FAILED`** — DNS failures
+  during reconnect are now retried with backoff (DNS may recover or
+  change), matching libzmq behavior.
+- **CLI catches `SocketDeadError` and `Socket::ResolutionError`** —
+  prints the error and exits with code 1 instead of silently exiting 0.
+
+### Improved
+
+- **CLI endpoint shorthand** — `tcp://:PORT` expands to
+  `tcp://localhost:PORT` (loopback, safe default). `tcp://*:PORT` expands
+  to `tcp://0.0.0.0:PORT` (all interfaces, explicit opt-in).
+
+### Fixed
+
+- **`tcp://*:PORT` failed on macOS** — `*` is not a resolvable hostname.
+  Connects now use `localhost` by default; `*` only expands to `0.0.0.0`
+  for explicit all-interface binding.
+- **`Socket` constant resolution inside `OMQ` namespace** — bare `Socket`
+  resolved to `OMQ::Socket` instead of `::Socket`, causing `NameError`
+  for `Socket::ResolutionError` and `Socket::AI_PASSIVE`.
+
 ## 0.6.3 — 2026-03-30
 
 ### Fixed

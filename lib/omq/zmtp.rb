@@ -27,6 +27,7 @@ module OMQ
       Errno::ETIMEDOUT,
       Errno::EHOSTUNREACH,
       Errno::ENETUNREACH,
+      Socket::ResolutionError,
     ].freeze
   end
 end
