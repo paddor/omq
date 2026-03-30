@@ -163,16 +163,16 @@ echo "hello" | omq req -c tcp://localhost:5555
 omq sub -b tcp://:5556 -s "weather."  &
 echo "weather.nyc 72F" | omq pub -c tcp://localhost:5556 -d 0.3
 
-# Pipeline with filtering
+# Pipeline with filtering ($F = message parts, $_ = first part)
+# /regexp/ matches against $_, next skips, break stops
 tail -f /var/log/syslog | omq push -c tcp://collector:5557
-omq pull -b tcp://:5557 -e '$F.first.include?("error") ? $F : nil'
+omq pull -b tcp://:5557 -e 'next unless /error/; $F'
 
 # Pipe: PULL → eval → PUSH in one process
 omq pipe -c ipc://@work -c ipc://@sink -e '$F.map(&:upcase)'
 
-# Pipe with 4 Ractor workers for CPU parallelism
-omq pipe -c ipc://@work -c ipc://@sink -P 4 \
-  -r ./fib.rb -e 'fib(Integer($_)).to_s'
+# Pipe with Ractor workers for CPU parallelism (-P = all CPUs)
+omq pipe -c ipc://@work -c ipc://@sink -P -r./fib -e 'fib(Integer($_)).to_s'
 
 # Exit when all peers disconnect (pipeline workers, sinks)
 omq pipe -c ipc://@work -c ipc://@sink --transient -e '$F'
