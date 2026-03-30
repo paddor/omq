@@ -152,7 +152,7 @@ See [`bench/`](bench/) for full results and scripts.
 # Echo server
 omq rep -b tcp://:5555 --echo
 
-# Upcase server in one line
+# Upcase server in one line ($F = message parts)
 omq rep -b tcp://:5555 -e '$F.map(&:upcase)'
 
 # Client
@@ -163,8 +163,7 @@ echo "hello" | omq req -c tcp://localhost:5555
 omq sub -b tcp://:5556 -s "weather."  &
 echo "weather.nyc 72F" | omq pub -c tcp://localhost:5556 -d 0.3
 
-# Pipeline with filtering ($F = message parts, $_ = first part)
-# /regexp/ matches against $_, next skips, break stops
+# Pipeline with filtering ($_ = first part)
 tail -f /var/log/syslog | omq push -c tcp://collector:5557
 omq pull -b tcp://:5557 -e 'next unless /error/; $F'
 
@@ -175,7 +174,7 @@ omq pipe -c ipc://@work -c ipc://@sink -e '$F.map(&:upcase)'
 omq pipe -c ipc://@work -c ipc://@sink -P -r./fib -e 'fib(Integer($_)).to_s'
 
 # Exit when all peers disconnect (pipeline workers, sinks)
-omq pipe -c ipc://@work -c ipc://@sink --transient -e '$F'
+omq pipe -c ipc://@work -c ipc://@sink --transient -e '$F * 2'
 
 # JSONL for structured data
 echo '["key","value"]' | omq push -c tcp://localhost:5557 -J
