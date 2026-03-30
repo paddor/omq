@@ -190,15 +190,14 @@ omq rep -b tcp://:5555 -D "secret" --curve-server
 omq req -c tcp://localhost:5555 --curve-server-key '...'
 ```
 
-The `-e` flag runs Ruby inside the socket instance — the full socket API (`self <<`, `send`, `subscribe`, ...) is available. `$F` is the message parts array, `$_` is the first part. Use `-r` to require gems:
+The `-e` flag runs Ruby inside the socket instance — the full socket API (`self <<`, `send`, `subscribe`, ...) is available. `$F` is the message parts array, `$_` is the first part.
+Use `-r` to require gems:
 
 ```sh
-omq sub -c tcp://localhost:5556 -s "" -r json \
-  -e 'JSON.parse($F.first)["temperature"]'
+omq sub -c tcp://localhost:5556 -s "" -rjson -e 'JSON.parse($F.first)["temperature"]'
 
 # BEGIN/END blocks (like awk) — accumulate and summarize
-omq pull -b tcp://:5557 \
-  -e 'BEGIN{ @sum = 0 } @sum += Integer($_); next END{ puts @sum }'
+omq pull -b tcp://:5557 -e 'BEGIN{ @sum = 0 } @sum += Integer($_); next END{ puts @sum }'
 ```
 
 Formats: `--ascii` (default, tab-separated), `--quoted`, `--raw`, `--jsonl`, `--msgpack`, `--marshal`. See `omq --help` for all options.
