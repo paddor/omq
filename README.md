@@ -47,7 +47,7 @@ gem 'omq'
 
 ## Learning ZeroMQ
 
-New to ZeroMQ? See [ZGUIDE_SUMMARY.md](ZGUIDE_SUMMARY.md) — a ~30 min read covering all major patterns with working OMQ code examples.
+New to ZeroMQ? See [GETTING_STARTED.md](GETTING_STARTED.md) — a ~30 min read covering all major patterns with working OMQ code examples.
 
 ## Quick Start
 
@@ -152,7 +152,7 @@ See [`bench/`](bench/) for full results and scripts.
 # Echo server
 omq rep -b tcp://:5555 --echo
 
-# Upcase server in one line ($F = message parts)
+# Upcase server — -e evals Ruby on each incoming message
 omq rep -b tcp://:5555 -e '$F.map(&:upcase)'
 
 # Client
@@ -163,44 +163,39 @@ echo "hello" | omq req -c tcp://localhost:5555
 omq sub -b tcp://:5556 -s "weather."  &
 echo "weather.nyc 72F" | omq pub -c tcp://localhost:5556 -d 0.3
 
-# Pipeline with filtering ($_ = first part)
+# Pipeline with filtering
 tail -f /var/log/syslog | omq push -c tcp://collector:5557
 omq pull -b tcp://:5557 -e 'next unless /error/; $F'
+
+# Transform outgoing messages with -E
+echo hello | omq push -c tcp://localhost:5557 -E '$F.map(&:upcase)'
+
+# REQ: transform request and reply independently
+echo hello | omq req -c tcp://localhost:5555 \
+  -E '$F.map(&:upcase)' -e '$F.map(&:reverse)'
 
 # Pipe: PULL → eval → PUSH in one process
 omq pipe -c ipc://@work -c ipc://@sink -e '$F.map(&:upcase)'
 
 # Pipe with Ractor workers for CPU parallelism (-P = all CPUs)
 omq pipe -c ipc://@work -c ipc://@sink -P -r./fib -e 'fib(Integer($_)).to_s'
-
-# Exit when all peers disconnect (pipeline workers, sinks)
-omq pipe -c ipc://@work -c ipc://@sink --transient -e '$F * 2'
-
-# JSONL for structured data
-echo '["key","value"]' | omq push -c tcp://localhost:5557 -J
-omq pull -b tcp://:5557 -J
-
-# Zstandard compression
-omq push -c tcp://remote:5557 -z < data.txt
-omq pull -b tcp://:5557 -z
-
-# CURVE encryption
-omq rep -b tcp://:5555 -D "secret" --curve-server
-# prints: OMQ_SERVER_KEY='...'
-omq req -c tcp://localhost:5555 --curve-server-key '...'
 ```
 
-The `-e` flag runs Ruby inside the socket instance — the full socket API (`self <<`, `send`, `subscribe`, ...) is available. `$F` is the message parts array, `$_` is the first part.
-Use `-r` to require gems:
+`-e` (recv-eval) transforms incoming messages, `-E` (send-eval) transforms outgoing messages. `$F` is the message parts array, `$_` is the first part. Use `-r` to require gems or load scripts that register handlers via `OMQ.incoming` / `OMQ.outgoing`:
+
+```ruby
+# my_handler.rb
+db = DB.connect("postgres://localhost/app")
+
+OMQ.incoming { db.query($F.first) }
+at_exit { db.close }
+```
 
 ```sh
-omq sub -c tcp://localhost:5556 -s "" -rjson -e 'JSON.parse($F.first)["temperature"]'
-
-# BEGIN/END blocks (like awk) — accumulate and summarize
-omq pull -b tcp://:5557 -e 'BEGIN{ @sum = 0 } @sum += Integer($_); next END{ puts @sum }'
+omq pull -b tcp://:5557 -r./my_handler.rb
 ```
 
-Formats: `--ascii` (default, tab-separated), `--quoted`, `--raw`, `--jsonl`, `--msgpack`, `--marshal`. See `omq --help` for all options.
+See [CLI.md](CLI.md) for full documentation, or `omq --help` / `omq --examples`.
 
 ## Interop with native ZMQ
 
