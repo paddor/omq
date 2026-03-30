@@ -167,10 +167,15 @@ echo "weather.nyc 72F" | omq pub -c tcp://localhost:5556 -d 0.3
 tail -f /var/log/syslog | omq push -c tcp://collector:5557
 omq pull -b tcp://:5557 -e '$F.first.include?("error") ? $F : nil'
 
-# Multipart messages via tabs
-printf "routing-key\tpayload data" | omq push -c tcp://localhost:5557
-omq pull -b tcp://:5557
-# => routing-key	payload data
+# Pipe: PULL → eval → PUSH in one process
+omq pipe -c ipc://@work -c ipc://@sink -e '$F.map(&:upcase)'
+
+# Pipe with 4 Ractor workers for CPU parallelism
+omq pipe -c ipc://@work -c ipc://@sink -P 4 \
+  -r ./fib.rb -e 'fib(Integer($_)).to_s'
+
+# Exit when all peers disconnect (pipeline workers, sinks)
+omq pipe -c ipc://@work -c ipc://@sink --transient -e '$F'
 
 # JSONL for structured data
 echo '["key","value"]' | omq push -c tcp://localhost:5557 -J
@@ -186,14 +191,18 @@ omq rep -b tcp://:5555 -D "secret" --curve-server
 omq req -c tcp://localhost:5555 --curve-server-key '...'
 ```
 
-The `-e` flag runs Ruby inside the socket instance — the full socket API (`self <<`, `send`, `subscribe`, ...) is available. Use `-r` to require gems:
+The `-e` flag runs Ruby inside the socket instance — the full socket API (`self <<`, `send`, `subscribe`, ...) is available. `$F` is the message parts array, `$_` is the first part. Use `-r` to require gems:
 
 ```sh
 omq sub -c tcp://localhost:5556 -s "" -r json \
   -e 'JSON.parse($F.first)["temperature"]'
+
+# BEGIN/END blocks (like awk) — accumulate and summarize
+omq pull -b tcp://:5557 \
+  -e 'BEGIN{ @sum = 0 } @sum += Integer($_); next END{ puts @sum }'
 ```
 
-Formats: `--ascii` (default, tab-separated), `--quoted`, `--raw`, `--jsonl`, `--msgpack`. See `omq --help` for all options.
+Formats: `--ascii` (default, tab-separated), `--quoted`, `--raw`, `--jsonl`, `--msgpack`, `--marshal`. See `omq --help` for all options.
 
 ## Interop with native ZMQ
 
