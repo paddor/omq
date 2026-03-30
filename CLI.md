@@ -144,6 +144,8 @@ Like awk — `BEGIN{}` runs once before the message loop, `END{}` runs after:
 omq pull -b tcp://:5557 -e 'BEGIN{ @sum = 0 } @sum += Integer($_); next END{ puts @sum }'
 ```
 
+Local variables won't work to share state between the blocks. Use `@ivars` instead.
+
 ### Which sockets accept which flag
 
 | Socket | `-E` (send) | `-e` (recv) |
@@ -187,8 +189,8 @@ For non-trivial transforms, put the logic in a Ruby file and load it with `-r`:
 # handler.rb
 db = PG.connect("dbname=app")
 
-OMQ.outgoing { $F.map(&:upcase) }
-OMQ.incoming { db.exec($F.first).values.flatten }
+OMQ.outgoing { |msg| msg.map(&:upcase) }
+OMQ.incoming { |msg| db.exec(msg.first).values.flatten }
 
 at_exit { db.close }
 ```
@@ -201,11 +203,10 @@ omq req -c tcp://localhost:5555 -r./handler.rb
 
 | Method | Effect |
 |--------|--------|
-| `OMQ.outgoing { ... }` | Register outgoing message transform |
-| `OMQ.incoming { ... }` | Register incoming message transform |
+| `OMQ.outgoing { |msg| ... }` | Register outgoing message transform |
+| `OMQ.incoming { |msg| ... }` | Register incoming message transform |
 
-- `$F` is set before each call (message parts array)
-- Use `$F.first` instead of `$_` in script handlers (Ruby scoping limitation)
+- use explicit block variable (like `msg`) instead of `$F`/`$_`
 - Setup: use local variables and closures at the top of the script
 - Teardown: use Ruby's `at_exit { ... }`
 - CLI flags (`-e`/`-E`) override script-registered handlers for the same direction
@@ -221,31 +222,33 @@ omq req -c tcp://localhost:5555 -r./handler.rb -E '$F.map(&:upcase)'
 ```ruby
 # count.rb — count messages, print total on exit
 count = 0
-OMQ.incoming { count += 1; $F }
+OMQ.incoming { |msg| count += 1; msg }
 at_exit { $stderr.puts "processed #{count} messages" }
 ```
 
 ```ruby
 # json_transform.rb — parse JSON, extract field
 require "json"
-OMQ.incoming { [JSON.parse($F.first)["value"]] }
+OMQ.incoming { |first_part, _| [JSON.parse(first_part)["value"]] }
 ```
 
 ```ruby
 # rate_limit.rb — skip messages arriving too fast
 last = 0
-OMQ.incoming {
-  now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+OMQ.incoming do |msg|
+  now = Async::Clock.now # monotonic clock
+
   if now - last >= 0.1
     last = now
-    $F
+    msg
   end
-}
+end
 ```
 
 ```ruby
 # enrich.rb — add timestamp to outgoing messages
-OMQ.outgoing { [$F.first, Time.now.iso8601] }
+OMQ.outgoing { |msg| [*msg, Time.now.iso8601] }
 ```
 
 ## Data sources
@@ -265,10 +268,10 @@ OMQ.outgoing { [$F.first, Time.now.iso8601] }
 |------|--------|
 | `-A` / `--ascii` | Tab-separated frames, non-printable → dots (default) |
 | `-Q` / `--quoted` | C-style escapes, lossless round-trip |
-| `--raw` | Raw binary, no framing |
+| `--raw` | Raw ZMTP binary (pipe to `hexdump -C` for debugging) |
 | `-J` / `--jsonl` | JSON Lines — `["frame1","frame2"]` per line |
 | `--msgpack` | MessagePack arrays (binary stream) |
-| `-M` / `--marshal` | Ruby Marshal (binary, `Array<String>`) |
+| `-M` / `--marshal` | Ruby Marshal (binary stream of `Array<String>` objects) |
 
 Multipart messages: in ASCII/quoted mode, frames are tab-separated. In JSONL mode, each message is a JSON array.
 
