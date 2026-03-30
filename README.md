@@ -17,6 +17,14 @@ OMQ implements the [ZMTP 3.1](https://rfc.zeromq.org/spec/23/) wire protocol fro
 
 ---
 
+## What is ZeroMQ?
+
+Think of it as TCP sockets that learned how to do messaging. You get the patterns you'd normally build on top of a message broker — pub/sub, work distribution, request/reply, fan-out — but without the broker. No middleware server to deploy, no extra hop, no single point of failure. Just connect your processes and send messages.
+
+ZeroMQ handles reconnection, queuing, and load balancing for you. Sockets connect to endpoints and messages flow — it gets out of your way and lets you focus on what your system actually does. If you've ever wired up services with raw TCP, HTTP polling, or Redis pub/sub and wished it was simpler, this is what you've been looking for.
+
+See [GETTING_STARTED.md](GETTING_STARTED.md) for a ~30 min walkthrough of all major patterns with working code.
+
 ## Highlights
 
 - **Zero dependencies on C** — no extensions, no FFI, no libzmq. `gem install` just works everywhere
@@ -25,8 +33,7 @@ OMQ implements the [ZMTP 3.1](https://rfc.zeromq.org/spec/23/) wire protocol fro
 - **Every socket pattern** — req/rep, pub/sub, push/pull, dealer/router, xpub/xsub, pair, and all draft types
 - **Every transport** — tcp, ipc (Unix domain sockets), inproc (in-process queues)
 - **Async-native** — built on fibers, non-blocking from the ground up
-
-New to ZeroMQ? See [GETTING_STARTED.md](GETTING_STARTED.md) — a ~30 min read covering all major patterns with working OMQ code examples.
+- **Wire-compatible** — interoperates with libzmq, pyzmq, CZMQ over tcp and ipc
 
 For architecture internals, see [DESIGN.md](DESIGN.md).
 
@@ -148,10 +155,6 @@ omq pull -b tcp://:5557 -r./my_handler.rb
 ```
 
 See [CLI.md](CLI.md) for full documentation, or `omq --help` / `omq --examples`.
-
-## Interop
-
-OMQ interoperates with libzmq, CZMQ, pyzmq, etc. over **tcp** and **ipc**. The `inproc://` transport is OMQ-internal (in-process Ruby queues) — use `ipc://` to talk across library boundaries.
 
 ## Development
 
