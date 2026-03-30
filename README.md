@@ -19,21 +19,24 @@ OMQ implements the [ZMTP 3.1](https://rfc.zeromq.org/spec/23/) wire protocol fro
 
 ## What is ZeroMQ?
 
-Think of it as TCP sockets that learned how to do messaging. You get the patterns you'd normally build on top of a message broker — pub/sub, work distribution, request/reply, fan-out — but without the broker. No middleware server to deploy, no extra hop, no single point of failure. Just connect your processes and send messages.
+Brokerless message-oriented middleware. No central server, no extra hop — processes talk directly to each other, cutting latency in half compared to broker-based systems. You get the patterns you'd normally build on top of RabbitMQ or Redis — pub/sub, work distribution, request/reply, fan-out — but decentralized, with no single point of failure.
 
-ZeroMQ handles reconnection, queuing, and load balancing for you. Sockets connect to endpoints and messages flow — it gets out of your way and lets you focus on what your system actually does. If you've ever wired up services with raw TCP, HTTP polling, or Redis pub/sub and wished it was simpler, this is what you've been looking for.
+Networking is hard. ZeroMQ abstracts away reconnection, queuing, load balancing, and framing so you can focus on what your system actually does. Start with threads talking over `inproc://`, split into processes with `ipc://`, scale across machines with `tcp://` — same code, same API, just change the URL.
+
+If you've ever wired up services with raw TCP, HTTP polling, or Redis pub/sub and wished it was simpler, this is what you've been looking for.
 
 See [GETTING_STARTED.md](GETTING_STARTED.md) for a ~30 min walkthrough of all major patterns with working code.
 
 ## Highlights
 
 - **Zero dependencies on C** — no extensions, no FFI, no libzmq. `gem install` just works everywhere
-- **Fast** — YJIT-optimized hot paths, batched sends, 244k msg/s inproc with single-digit µs latency
+- **Fast** — batched sends, YJIT-friendly frame encoding, 244k msg/s inproc with single-digit µs latency
 - **`omq` CLI** — pipe, filter, and transform messages from the terminal with Ruby eval, Ractor parallelism, and [script handlers](CLI.md#script-handlers--r)
 - **Every socket pattern** — req/rep, pub/sub, push/pull, dealer/router, xpub/xsub, pair, and all draft types
 - **Every transport** — tcp, ipc (Unix domain sockets), inproc (in-process queues)
-- **Async-native** — built on fibers, non-blocking from the ground up
+- **Async-native** — built on fibers, non-blocking from the ground up. A shared IO thread handles sockets outside of Async — no reactor needed for simple scripts
 - **Wire-compatible** — interoperates with libzmq, pyzmq, CZMQ over tcp and ipc
+- **Bind/connect order doesn't matter** — connect before bind, bind before connect, peers come and go. ZeroMQ reconnects and requeues automatically
 
 For architecture internals, see [DESIGN.md](DESIGN.md).
 
@@ -65,7 +68,7 @@ Async do |task|
   end
 
   req << 'hello'
-  puts req.receive.inspect  # => ["HELLO"]
+  p req.receive  # => ["HELLO"]
 ensure
   req&.close
   rep&.close
@@ -81,7 +84,7 @@ Async do |task|
   sub.subscribe('')  # subscribe to all
 
   task.async { pub << 'news flash' }
-  puts sub.receive.inspect  # => ["news flash"]
+  p sub.receive  # => ["news flash"]
 ensure
   pub&.close
   sub&.close
@@ -96,12 +99,56 @@ Async do
   pull = OMQ::PULL.bind('inproc://pipeline')
 
   push << 'work item'
-  puts pull.receive.inspect  # => ["work item"]
+  p pull.receive  # => ["work item"]
 ensure
   push&.close
   pull&.close
 end
 ```
+
+### Without Async (IO thread)
+
+OMQ spawns a shared `omq-io` thread when used outside an Async reactor — no boilerplate needed:
+
+```ruby
+require 'omq'
+
+push = OMQ::PUSH.bind('tcp://127.0.0.1:5557')
+pull = OMQ::PULL.connect('tcp://127.0.0.1:5557')
+
+push << 'hello'
+p pull.receive  # => ["hello"]
+
+push.close
+pull.close
+```
+
+The IO thread runs all pumps, reconnection, and heartbeating in the background. When you're inside an `Async` block, OMQ uses the existing reactor instead.
+
+## Socket Types
+
+All sockets are thread-safe. Default HWM is 1000 messages per socket. Classes live under `OMQ::` (alias: `ØMQ`).
+
+#### Standard (multipart messages)
+
+| Pattern | Send | Receive | When HWM full |
+|---------|------|---------|---------------|
+| **REQ** / **REP** | Round-robin / route-back | Fair-queue | Block |
+| **PUB** / **SUB** | Fan-out to subscribers | Subscription filter | Drop |
+| **PUSH** / **PULL** | Round-robin to workers | Fair-queue | Block |
+| **DEALER** / **ROUTER** | Round-robin / identity-route | Fair-queue | Block |
+| **XPUB** / **XSUB** | Fan-out (subscription events) | Fair-queue | Drop |
+| **PAIR** | Exclusive 1-to-1 | Exclusive 1-to-1 | Block |
+
+#### Draft (single-frame only)
+
+| Pattern | Send | Receive | When HWM full |
+|---------|------|---------|---------------|
+| **CLIENT** / **SERVER** | Round-robin / routing-ID | Fair-queue | Block |
+| **RADIO** / **DISH** | Group fan-out | Group filter | Drop |
+| **SCATTER** / **GATHER** | Round-robin | Fair-queue | Block |
+| **PEER** | Routing-ID | Fair-queue | Block |
+| **CHANNEL** | Exclusive 1-to-1 | Exclusive 1-to-1 | Block |
 
 ## omq — CLI tool
 

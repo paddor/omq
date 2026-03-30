@@ -63,8 +63,14 @@ Brokers are great when you actually need them — durable queues,
 dead-letter handling, multi-tenant isolation. But for many use cases —
 internal service communication, pipeline processing, real-time data
 distribution, inter-thread coordination — a broker is overhead you're
-paying for but not using. ZeroMQ gives you the messaging *primitives*
-and lets you compose exactly the topology you need.
+paying for but not using.
+
+ZeroMQ is **brokerless** by default. Processes connect directly to each
+other — no central server to deploy, monitor, or lose. This
+decentralized approach means no single point of failure and half the
+network hops. When you *do* need a broker, ZeroMQ lets you build one
+with ROUTER/DEALER sockets (see [Majordomo](#majordomo-service-broker)
+below) — but it's your code, your rules, not a black box.
 
 It's the difference between installing PostgreSQL when all you need is
 SQLite, or deploying Kubernetes when a systemd unit file would do.
@@ -624,8 +630,19 @@ end
 ## Reliability patterns
 
 ZeroMQ gives you no delivery guarantees out of the box. Messages can be
-lost on connection drops, HWM overflow, or process crashes. The zguide
-builds reliability from simple to sophisticated:
+lost on connection drops, HWM overflow, or process crashes.
+
+This is by design, not a limitation. Centralized brokers that claim
+"exactly once delivery" are misleading — a message can sit in a TCP
+buffer or broker queue and look "delivered," but if the receiving process
+crashes before it reads that buffer, the message is gone. Only the
+application itself can confirm that a message was actually processed.
+This is the [end-to-end argument](https://web.mit.edu/Saltzer/www/publications/endtoend/endtoend.pdf):
+reliability belongs at the endpoints, not in the transport.
+
+ZeroMQ gives you the building blocks — timeouts, retries, heartbeats,
+idempotent services — and the zguide shows how to compose them from
+simple to sophisticated:
 
 ### Lazy Pirate (client-side retry)
 
