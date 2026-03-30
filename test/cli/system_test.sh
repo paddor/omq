@@ -7,8 +7,6 @@
 set -eu
 
 TMPDIR=$(mktemp -d)
-trap 'rm -rf "$TMPDIR"' EXIT
-
 export OMQ_DEV=1
 OMQ="ruby -Ilib exe/omq"
 T="-t 1"  # default timeout for all commands
@@ -17,6 +15,18 @@ FAIL=0
 
 STDERR_LOG="$TMPDIR/stderr.log"
 > "$STDERR_LOG"
+echo "stderr log: $TMPDIR/stderr.log"
+
+cleanup() {
+	if [ $? -eq 0 ]
+	then
+		rm -rf "$TMPDIR"
+	else
+		cat $TMPDIR/stderr.log >&2
+	fi
+}
+
+trap cleanup EXIT
 
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() {
@@ -36,9 +46,13 @@ check() {
   fi
   > "$STDERR_LOG"  # reset for next test
 }
+
 # Unique IPC name per test (abstract namespace, no file cleanup)
 S=0
-ipc() { S=$((S + 1)); echo "ipc://@omq_test_${$}_${S}"; }
+ipc() {
+	S=$((S + 1))
+	echo "ipc://@omq_test_${$}_${S}"
+}
 
 echo "=== omq system tests ==="
 echo
@@ -312,12 +326,16 @@ if ruby -Ilib -e 'require "omq/curve"' 2>>"$STDERR_LOG"; then
   CURVE_PUB=$(echo "$CURVE_KEYS" | head -1)
   CURVE_SEC=$(echo "$CURVE_KEYS" | tail -1)
 
-  OMQ_SERVER_PUBLIC=$CURVE_PUB OMQ_SERVER_SECRET=$CURVE_SEC \
-    $OMQ rep -b $U -D "secret" -n 1 $T > $TMPDIR/curve_rep_out.txt 2>>"$STDERR_LOG" &
-  CURVE_REQ_OUT=$(OMQ_SERVER_KEY=$CURVE_PUB \
-    $OMQ req -c $U -D "classified" -n 1 $T 2>>"$STDERR_LOG")
+  # REP
+  OMQ_SERVER_PUBLIC="$CURVE_PUB" OMQ_SERVER_SECRET="$CURVE_SEC" \
+    $OMQ rep -b $U -D "secret" -n 1 -t 3 > $TMPDIR/curve_rep_out.txt 2>>"$STDERR_LOG" &
+
+  # REQ
+  OMQ_SERVER_KEY="$CURVE_PUB" \
+    $OMQ req -c $U -D "classified" -n 1 -t 3 > $TMPDIR/curve_req_out.txt 2>>"$STDERR_LOG"
   wait
-  check "curve req receives encrypted reply" "secret" "$CURVE_REQ_OUT"
+
+  check "curve req receives encrypted reply" "secret" "$(cat $TMPDIR/curve_req_out.txt)"
   check "curve rep receives encrypted request" "classified" "$(cat $TMPDIR/curve_rep_out.txt)"
 else
   echo "CURVE: skipped (omq-curve not installed)"
@@ -327,7 +345,7 @@ fi
 
 echo "Script OMQ.incoming:"
 cat > $TMPDIR/recv_script.rb <<'RUBY'
-OMQ.incoming { $F.map(&:upcase) }
+OMQ.incoming { |msg| msg.map(&:upcase) }
 RUBY
 U=$(ipc)
 $OMQ pull -b $U -r $TMPDIR/recv_script.rb -n 1 $T > $TMPDIR/script_recv_out.txt 2>>"$STDERR_LOG" &
@@ -351,8 +369,8 @@ check "script OMQ.outgoing transforms outgoing" "HELLO" "$(cat $TMPDIR/script_se
 
 echo "Script both directions on REQ:"
 cat > $TMPDIR/both_script.rb <<'RUBY'
-OMQ.outgoing { $F.map(&:upcase) }
-OMQ.incoming { [$F.first.reverse] }
+OMQ.outgoing { |msg| msg.map(&:upcase) }
+OMQ.incoming { |first_part, *| first_part.reverse }
 RUBY
 U=$(ipc)
 $OMQ rep -b $U --echo -n 1 $T > /dev/null 2>&1 &
@@ -366,7 +384,7 @@ check "script send+recv on REQ" "OLLEH" "$REQ_BOTH_OUT"
 echo "Script at_exit:"
 cat > $TMPDIR/atexit_script.rb <<RUBY
 marker = "$TMPDIR/atexit_marker.txt"
-OMQ.incoming { \$F.map(&:upcase) }
+OMQ.incoming { |msg| msg.map(&:upcase) }
 at_exit { File.write(marker, "cleanup_ran") }
 RUBY
 U=$(ipc)
@@ -380,7 +398,11 @@ check "script at_exit runs on exit" "cleanup_ran" "$(cat $TMPDIR/atexit_marker.t
 echo "Script closure state:"
 cat > $TMPDIR/closure_script.rb <<'RUBY'
 count = 0
-OMQ.incoming { count += 1; ["msg_#{count}"] }
+
+OMQ.incoming do
+  count += 1
+  "msg_#{count}"
+end
 RUBY
 U=$(ipc)
 $OMQ pull -b $U -r $TMPDIR/closure_script.rb -n 3 $T > $TMPDIR/closure_out.txt 2>>"$STDERR_LOG" &
@@ -393,7 +415,7 @@ check "script closure increments across messages" "msg_3" "$(tail -1 $TMPDIR/clo
 echo "Script + CLI override:"
 cat > $TMPDIR/override_script.rb <<'RUBY'
 OMQ.outgoing { raise "should not be called" }
-OMQ.incoming { $F.map(&:downcase) }
+OMQ.incoming { |msg| msg.map(&:downcase) }
 RUBY
 U=$(ipc)
 $OMQ rep -b $U --echo -n 1 $T > /dev/null 2>&1 &
@@ -408,7 +430,7 @@ echo "Script at_exit teardown:"
 TEARDOWN_LOG="$TMPDIR/teardown_log.txt"
 cat > $TMPDIR/teardown_script.rb <<RUBY
 log = []
-OMQ.incoming { log << \$F.first; \$F }
+OMQ.incoming { |parts| log << parts.first; parts }
 at_exit { File.write("$TEARDOWN_LOG", log.join(",")) }
 RUBY
 U=$(ipc)
