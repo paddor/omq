@@ -88,7 +88,7 @@ module OMQ
 
       ── Periodic Publish ───────────────────────────────────────────
 
-        ┌─────┐  "tick 1"   ┌─────┐
+        ┌─────┐  "tick 1"    ┌─────┐
         │ PUB │──(every 1s)─→│ SUB │
         └─────┘              └─────┘
 
@@ -134,20 +134,17 @@ module OMQ
         omq pull --bind ipc://@sink
 
         # 4 Ractor workers in a single process (-P)
-        omq pipe -c ipc://@work -c ipc://@sink -P 4 \
-          -r ./fib.rb -e 'fib(Integer($_)).to_s'
+        omq pipe -c ipc://@work -c ipc://@sink -P4 -r./fib -e 'fib(Integer($_)).to_s'
 
         # exit when producer disconnects (--transient)
-        omq pipe -c ipc://@work -c ipc://@sink --transient \
-          -e '$F.map(&:upcase)'
+        omq pipe -c ipc://@work -c ipc://@sink --transient -e '$F.map(&:upcase)'
 
         # fan-in: multiple sources → one sink
         omq pipe --in -c ipc://@work1 -c ipc://@work2 \
           --out -c ipc://@sink -e '$F.map(&:upcase)'
 
         # fan-out: one source → multiple sinks (round-robin)
-        omq pipe --in -b tcp://:5555 \
-          --out -c ipc://@sink1 -c ipc://@sink2 -e '$F'
+        omq pipe --in -b tcp://:5555 --out -c ipc://@sink1 -c ipc://@sink2 -e '$F'
 
       ── CLIENT / SERVER (draft) ──────────────────────────────────
 
@@ -203,53 +200,44 @@ module OMQ
         omq router --bind tcp://:5555
 
         # terminal 2: dealer with identity
-        echo "hello" | omq dealer --connect tcp://localhost:5555 \
-          --identity worker-1
+        echo "hello" | omq dealer --connect tcp://localhost:5555 --identity worker-1
 
       ── Ruby Eval ────────────────────────────────────────────────
 
         # filter incoming: only pass messages containing "error"
-        omq pull --bind tcp://:5557 \
-          --recv-eval '$F.first.include?("error") ? $F : nil'
+        omq pull -b tcp://:5557 --recv-eval '$F.first.include?("error") ? $F : nil'
 
         # transform incoming with gems
-        omq sub --connect tcp://localhost:5556 --require json \
-          --recv-eval 'JSON.parse($F.first)["temperature"]'
+        omq sub -c tcp://localhost:5556 -rjson -e 'JSON.parse($F.first)["temperature"]'
 
         # require a local file, use its methods
-        omq rep --bind tcp://:5555 --require ./transform.rb \
-          --recv-eval 'upcase_all($F)'
+        omq rep --bind tcp://:5555 --require ./transform.rb -e 'upcase_all($F)'
 
         # next skips, break stops — regexps match against $_
-        omq pull --bind tcp://:5557 \
-          --recv-eval 'next if /^#/; break if /quit/; $F'
+        omq pull -b tcp://:5557 -e 'next if /^#/; break if /quit/; $F'
 
         # BEGIN/END blocks (like awk) — accumulate and summarize
-        omq pull --bind tcp://:5557 \
-          --recv-eval 'BEGIN{ @sum = 0 } @sum += Integer($_); next END{ puts @sum }'
+        omq pull -b tcp://:5557 -e 'BEGIN{@sum = 0} @sum += Integer($_); nil END{puts @sum}'
 
         # transform outgoing messages
-        echo hello | omq push --connect tcp://localhost:5557 \
-          --send-eval '$F.map(&:upcase)'
+        echo hello | omq push -c tcp://localhost:5557 --send-eval '$F.map(&:upcase)'
 
         # REQ: transform request and reply independently
-        echo hello | omq req --connect tcp://localhost:5555 \
-          --send-eval '$F.map(&:upcase)' --recv-eval '$_'
+        echo hello | omq req -c tcp://localhost:5555 -E '$F.map(&:upcase)' -e '$_'
 
       ── Script Handlers (-r) ────────────────────────────────────
 
         # handler.rb — register transforms from a file
         #   db = PG.connect("dbname=app")
-        #   OMQ.incoming { db.exec($F.first).values.flatten }
+        #   OMQ.incoming { |first_part, _| db.exec(first_part).values.flatten }
         #   at_exit { db.close }
-        omq pull --bind tcp://:5557 -r ./handler.rb
+        omq pull --bind tcp://:5557 -r./handler.rb
 
         # combine script handlers with inline eval
-        omq req -c tcp://localhost:5555 -r ./handler.rb \
-          --send-eval '$F.map(&:upcase)'
+        omq req -c tcp://localhost:5555 -r./handler.rb -E '$F.map(&:upcase)'
 
-        # OMQ.outgoing { ... }   — registered outgoing transform
-        # OMQ.incoming { ... }   — registered incoming transform
+        # OMQ.outgoing { |msg| ... }   — registered outgoing transform
+        # OMQ.incoming { |msg| ... }   — registered incoming transform
         # CLI flags (-e/-E) override registered handlers
     TEXT
 
