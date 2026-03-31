@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.0 — 2026-03-31
+
+### Breaking
+
+- **CLI extracted into omq-cli gem** — the `omq` executable, all CLI
+  code (`lib/omq/cli/`), tests, and `CLI.md` have moved to the
+  [omq-cli](https://github.com/paddor/omq-cli) gem. `gem install omq`
+  no longer provides the `omq` command — use `gem install omq-cli`.
+- **`OMQ.outgoing` / `OMQ.incoming`** registration API moved to omq-cli.
+  Library-only users are unaffected (these were CLI-specific).
+
+### Changed
+
+- **Gemspec is library-only** — no `exe/`, no `bindir`, no `executables`.
+- **README** — restored title, replaced inline CLI section with a
+  pointer to omq-cli, fixed ZMTP attribution for protocol-zmtp.
+- **DESIGN.md** — acknowledged protocol-zmtp, clarified transient
+  task / linger interaction, removed ZMTP wire protocol section (now in
+  protocol-zmtp), simplified inproc description, removed CLI section.
+
 ## 0.8.0 — 2026-03-31
 
 ### Breaking
