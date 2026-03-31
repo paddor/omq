@@ -19,7 +19,7 @@ module OMQ
     @thread     = nil
     @root_task  = nil
     @work_queue = nil
-    @max_linger = 0
+    @lingers    = Hash.new(0) # linger value → count of active sockets
 
     class << self
       # Returns the root Async task inside the shared IO thread.
@@ -64,12 +64,23 @@ module OMQ
       end
 
 
-      # Tracks the longest linger across all sockets on this thread.
+      # Registers a socket's linger value.
       #
-      # @param seconds [Numeric, nil] linger value (nil = unbounded)
+      # @param seconds [Numeric, nil] linger value
       #
       def track_linger(seconds)
-        @max_linger = [seconds || 0, @max_linger].max
+        @lingers[seconds || 0] += 1
+      end
+
+
+      # Unregisters a socket's linger value.
+      #
+      # @param seconds [Numeric, nil] linger value
+      #
+      def untrack_linger(seconds)
+        key = seconds || 0
+        @lingers[key] -= 1
+        @lingers.delete(key) if @lingers[key] <= 0
       end
 
 
@@ -79,12 +90,13 @@ module OMQ
       #
       def stop!
         return unless @thread&.alive?
+        max_linger = @lingers.empty? ? 0 : @lingers.keys.max
         @work_queue&.push(nil)
-        @thread&.join(@max_linger + 1)
+        @thread&.join(max_linger + 1)
         @thread     = nil
         @root_task  = nil
         @work_queue = nil
-        @max_linger = 0
+        @lingers    = Hash.new(0)
       end
 
       private

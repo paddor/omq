@@ -54,6 +54,7 @@ module OMQ
       @all_peers_gone       = Async::Promise.new
       @reconnect_enabled    = true
       @parent_task          = nil
+      @on_io_thread         = false
       @connection_promises  = {} # connection => Async::Promise
       @fatal_error          = nil
     end
@@ -330,6 +331,7 @@ module OMQ
       end
 
       @closed = true
+      Reactor.untrack_linger(@options.linger) if @on_io_thread
 
       # Stop any remaining listeners.
       @listeners.each(&:stop)
@@ -396,7 +398,8 @@ module OMQ
       if Async::Task.current?
         @parent_task = Async::Task.current
       else
-        @parent_task = Reactor.root_task
+        @parent_task  = Reactor.root_task
+        @on_io_thread = true
         Reactor.track_linger(@options.linger)
       end
     end
