@@ -38,7 +38,7 @@ describe "Edge cases" do
         end
 
         received = 0
-        pull.recv_timeout = 0.2
+        pull.recv_timeout = 0.05
         loop do
           pull.receive
           received += 1
@@ -66,7 +66,7 @@ describe "Edge cases" do
         end
 
         received = 0
-        pull.recv_timeout = 0.2
+        pull.recv_timeout = 0.05
         loop do
           pull.receive
           received += 1

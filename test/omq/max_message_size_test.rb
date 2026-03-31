@@ -24,7 +24,7 @@ describe "max_message_size" do
       req.send("x" * 100)
 
       # REP should not receive it (connection closed)
-      rep.read_timeout = 0.1
+      rep.read_timeout = 0.02
       assert_raises(IO::TimeoutError) { rep.receive }
     ensure
       req&.close
@@ -102,7 +102,7 @@ describe "max_message_size" do
       # First frame ok, second exceeds limit
       req.send(["small", "x" * 100])
 
-      rep.read_timeout = 0.1
+      rep.read_timeout = 0.02
       assert_raises(IO::TimeoutError) { rep.receive }
     ensure
       req&.close

@@ -9,7 +9,7 @@ describe "send_timeout" do
     Async do
       # No peer connected — the send queue (HWM=1) fills immediately
       # and the second enqueue blocks until send_timeout fires.
-      push = OMQ::PUSH.new(nil, send_hwm: 1, send_timeout: 0.1)
+      push = OMQ::PUSH.new(nil, send_hwm: 1, send_timeout: 0.02)
       push.bind("ipc://@omq_test_send_timeout")
 
       assert_raises IO::TimeoutError do
@@ -42,7 +42,7 @@ describe "recv_timeout" do
 
   it "raises IO::TimeoutError when recv blocks longer than recv_timeout" do
     Async do
-      pull = OMQ::PULL.new(nil, recv_timeout: 0.1)
+      pull = OMQ::PULL.new(nil, recv_timeout: 0.02)
       pull.bind("inproc://timeout-recv")
 
       push = OMQ::PUSH.connect("inproc://timeout-recv")
@@ -81,7 +81,7 @@ describe "recv_timeout on other socket types" do
     Async do
       pub = OMQ::PUB.bind("inproc://timeout-sub")
       sub = OMQ::SUB.connect("inproc://timeout-sub", prefix: "")
-      sub.recv_timeout = 0.05
+      sub.recv_timeout = 0.02
 
       assert_raises(IO::TimeoutError) { sub.receive }
     ensure
@@ -94,7 +94,7 @@ describe "recv_timeout on other socket types" do
     Async do
       a = OMQ::PAIR.bind("inproc://timeout-pair")
       b = OMQ::PAIR.connect("inproc://timeout-pair")
-      b.recv_timeout = 0.05
+      b.recv_timeout = 0.02
 
       assert_raises(IO::TimeoutError) { b.receive }
     ensure
@@ -106,7 +106,7 @@ describe "recv_timeout on other socket types" do
   it "works on REP" do
     Async do
       rep = OMQ::REP.bind("inproc://timeout-rep")
-      rep.recv_timeout = 0.05
+      rep.recv_timeout = 0.02
 
       assert_raises(IO::TimeoutError) { rep.receive }
     ensure
@@ -118,7 +118,7 @@ describe "recv_timeout on other socket types" do
     Async do
       router = OMQ::ROUTER.bind("inproc://timeout-dealer")
       dealer = OMQ::DEALER.connect("inproc://timeout-dealer")
-      dealer.recv_timeout = 0.05
+      dealer.recv_timeout = 0.02
 
       assert_raises(IO::TimeoutError) { dealer.receive }
     ensure

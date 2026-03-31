@@ -67,7 +67,7 @@ describe "Heartbeat" do
       sleep 0.08
 
       # REP should have detected dead peer. Try to receive — should timeout.
-      rep.recv_timeout = 0.05
+      rep.recv_timeout = 0.02
       assert_raises(IO::TimeoutError) { rep.receive }
     ensure
       rep&.close

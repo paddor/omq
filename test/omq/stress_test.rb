@@ -117,7 +117,7 @@ describe "Stress tests" do
 
       # Each subscriber should receive all messages (in parallel)
       counts = subs.map do |sub|
-        sub.read_timeout = 0.05
+        sub.read_timeout = 0.02
         Async do
           count = 0
           loop do
