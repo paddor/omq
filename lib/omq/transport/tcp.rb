@@ -23,34 +23,18 @@ module OMQ
           addrs = Addrinfo.getaddrinfo(host, port, nil, :STREAM, nil, ::Socket::AI_PASSIVE)
           raise ::Socket::ResolutionError, "no addresses for #{host}" if addrs.empty?
 
-          servers      = []
-          accept_tasks = []
-          actual_port  = nil
+          servers     = []
+          actual_port = nil
 
           addrs.each do |addr|
             server = TCPServer.new(addr.ip_address, actual_port || port)
             actual_port ||= server.local_address.ip_port
             servers << server
-
-            ip        = addr.ip_address
-            host_part = ip.include?(":") ? "[#{ip}]" : ip
-            resolved  = "tcp://#{host_part}:#{actual_port}"
-
-            accept_tasks << Reactor.spawn_pump(annotation: "tcp accept #{resolved}") do
-              loop do
-                client = server.accept
-                Async::Task.current.defer_stop do
-                  engine.handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: resolved)
-                end
-              end
-            rescue IOError
-              # server closed
-            end
           end
 
           host_part = host.include?(":") ? "[#{host}]" : host
           resolved  = "tcp://#{host_part}:#{actual_port}"
-          Listener.new(resolved, servers, accept_tasks, actual_port)
+          Listener.new(resolved, servers, actual_port)
         end
 
         # Connects to a TCP endpoint.
@@ -89,24 +73,36 @@ module OMQ
         #
         attr_reader :port
 
+        # @return [Array<TCPServer>] bound server sockets
+        #
+        attr_reader :servers
+
 
         # @param endpoint [String] resolved endpoint URI
-        # @param server [TCPServer]
-        # @param accept_task [#stop] the accept loop handle
+        # @param servers [Array<TCPServer>]
         # @param port [Integer] bound port number
         #
-        def initialize(endpoint, servers, accept_tasks, port)
-          @endpoint     = endpoint
-          @servers      = servers
-          @accept_tasks = accept_tasks
-          @port         = port
+        def initialize(endpoint, servers, port)
+          @endpoint = endpoint
+          @servers  = servers
+          @port     = port
+          @tasks    = []
+        end
+
+
+        # Registers accept loop tasks owned by the engine.
+        #
+        # @param tasks [Array<Async::Task>]
+        #
+        def accept_tasks=(tasks)
+          @tasks = tasks
         end
 
 
         # Stops the listener.
         #
         def stop
-          @accept_tasks.each(&:stop)
+          @tasks.each(&:stop)
           @servers.each { |s| s.close rescue nil }
         end
       end

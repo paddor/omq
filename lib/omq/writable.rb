@@ -14,7 +14,7 @@ module OMQ
     #
     def send(message)
       parts = freeze_message(message)
-      with_timeout(@options.write_timeout) { @engine.enqueue_send(parts) }
+      Reactor.run { with_timeout(@options.write_timeout) { @engine.enqueue_send(parts) } }
       self
     end
 

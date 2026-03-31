@@ -61,8 +61,22 @@ module OMQ
 
     attr_reader :peer_connected, :all_peers_gone, :connections, :parent_task
 
-
     attr_writer :reconnect_enabled
+
+
+    # Spawns an inproc reconnect retry task under @parent_task.
+    #
+    # @param endpoint [String]
+    # @yield [interval] the retry loop body
+    #
+    def spawn_inproc_retry(endpoint)
+      ri  = @options.reconnect_interval
+      ivl = ri.is_a?(Range) ? ri.begin : ri
+      @tasks << @parent_task.async(transient: true, annotation: "inproc reconnect #{endpoint}") do
+        yield ivl
+      rescue Async::Stop
+      end
+    end
 
 
     # Binds to an endpoint.
@@ -72,9 +86,9 @@ module OMQ
     # @raise [ArgumentError] on unsupported transport
     #
     def bind(endpoint)
-      capture_parent_task
       transport = transport_for(endpoint)
-      listener = transport.bind(endpoint, self)
+      listener  = transport.bind(endpoint, self)
+      start_accept_loops(listener)
       @listeners << listener
       @last_endpoint = listener.endpoint
       @last_tcp_port = extract_tcp_port(listener.endpoint)
@@ -87,7 +101,6 @@ module OMQ
     # @return [void]
     #
     def connect(endpoint)
-      capture_parent_task
       validate_endpoint!(endpoint)
       @connected_endpoints << endpoint
       if endpoint.start_with?("inproc://")
@@ -235,7 +248,7 @@ module OMQ
       end
 
       if transform
-        Reactor.spawn_pump(annotation: "recv pump") do
+        @parent_task.async(transient: true, annotation: "recv pump") do
           loop do
             msg = conn.receive_message
             msg = transform.call(msg).freeze
@@ -248,7 +261,7 @@ module OMQ
           signal_fatal_error(error)
         end
       else
-        Reactor.spawn_pump(annotation: "recv pump") do
+        @parent_task.async(transient: true, annotation: "recv pump") do
           loop do
             recv_queue.enqueue(conn.receive_message)
           end
@@ -373,15 +386,23 @@ module OMQ
     end
 
 
-    private
-
-
     # Saves the current Async task so connection subtrees can be
-    # spawned as siblings of the caller's task.
+    # spawned under the caller's task tree. Called by Socket before
+    # the first bind/connect — outside Reactor.run so non-Async
+    # callers get the IO thread's root task, not an ephemeral work task.
     #
     def capture_parent_task
-      @parent_task ||= Async::Task.current? ? Async::Task.current : nil
+      return if @parent_task
+      if Async::Task.current?
+        @parent_task = Async::Task.current
+      else
+        @parent_task = Reactor.root_task
+        Reactor.track_linger(@options.linger)
+      end
     end
+
+
+    private
 
 
     # Spawns an isolated connection task as a sibling of accept/reconnect
@@ -392,10 +413,12 @@ module OMQ
     def spawn_connection(io, as_server:, endpoint: nil)
       task = @parent_task&.async(transient: true, annotation: "conn #{endpoint}") do
         done = Async::Promise.new
-        setup_connection(io, as_server: as_server, endpoint: endpoint, done: done)
+        conn = setup_connection(io, as_server: as_server, endpoint: endpoint, done: done)
         done.wait
       rescue Protocol::ZMTP::Error, *CONNECTION_LOST
         # handshake failed or connection lost — subtree cleaned up
+      ensure
+        conn&.close rescue nil
       end
       @tasks << task if task
     end
@@ -443,6 +466,7 @@ module OMQ
       @connection_promises[conn]  = done if done
       @routing.connection_added(conn)
       @peer_connected.resolve(conn)
+      conn
     rescue Protocol::ZMTP::Error, *CONNECTION_LOST
       conn&.close
       raise
@@ -463,7 +487,7 @@ module OMQ
       timeout = @options.heartbeat_timeout || interval
       conn.touch_heartbeat
 
-      @tasks << Reactor.spawn_pump(annotation: "heartbeat") do
+      @tasks << @parent_task.async(transient: true, annotation: "heartbeat") do
         loop do
           sleep interval
           conn.send_command(Protocol::ZMTP::Codec::Command.ping(ttl: ttl, context: "".b))
@@ -472,6 +496,7 @@ module OMQ
             break
           end
         end
+      rescue Async::Stop
       rescue *CONNECTION_LOST
         # connection closed
       end
@@ -494,7 +519,7 @@ module OMQ
         max_delay = nil
       end
 
-      @tasks << Reactor.spawn_pump(annotation: "reconnect #{endpoint}") do
+      @tasks << @parent_task.async(transient: true, annotation: "reconnect #{endpoint}") do
         loop do
           break if @closed
           sleep delay if delay > 0
@@ -543,6 +568,50 @@ module OMQ
       return nil unless endpoint&.start_with?("tcp://")
       port = endpoint.split(":").last.to_i
       port.positive? ? port : nil
+    end
+
+
+    # Spawns accept loops for a listener under @parent_task.
+    #
+    # TCP listeners have multiple server sockets (IPv4/IPv6);
+    # IPC listeners have one. Inproc listeners have none.
+    #
+    def start_accept_loops(listener)
+      case listener
+      when Transport::TCP::Listener
+        tasks = listener.servers.map do |server|
+          @parent_task.async(transient: true, annotation: "tcp accept #{listener.endpoint}") do
+            loop do
+              client = server.accept
+              Async::Task.current.defer_stop do
+                handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: listener.endpoint)
+              end
+            end
+          rescue Async::Stop
+          rescue IOError
+            # server closed
+          ensure
+            server.close rescue nil
+          end
+        end
+        listener.accept_tasks = tasks
+
+      when Transport::IPC::Listener
+        task = @parent_task.async(transient: true, annotation: "ipc accept #{listener.endpoint}") do
+          loop do
+            client = listener.server.accept
+            Async::Task.current.defer_stop do
+              handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: listener.endpoint)
+            end
+          end
+        rescue Async::Stop
+        rescue IOError
+          # server closed
+        ensure
+          listener.server.close rescue nil
+        end
+        listener.accept_task = task
+      end
     end
   end
 end

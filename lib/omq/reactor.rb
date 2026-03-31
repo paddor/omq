@@ -5,39 +5,48 @@ require "async"
 module OMQ
   # Shared IO reactor for the Ruby backend.
   #
-  # When user code runs inside an Async reactor, pump tasks are spawned
-  # as transient Async tasks directly. When no reactor is available
-  # (e.g. bare Thread.new), a single shared IO thread hosts all pump
-  # tasks — mirroring libzmq's IO thread architecture.
+  # When user code runs inside an Async reactor, engine tasks are
+  # spawned directly under the caller's Async task. When no reactor
+  # is available (e.g. bare Thread.new), a single shared IO thread
+  # hosts all engine tasks — mirroring libzmq's IO thread.
+  #
+  # Engines obtain the IO thread's root task via {.root_task} and
+  # use it as their @parent_task. Blocking operations from the main
+  # thread are dispatched to the IO thread via {.run}.
   #
   module Reactor
-    @work_queue = Async::Queue.new
-    @thread     = nil
     @mutex      = Mutex.new
+    @thread     = nil
+    @root_task  = nil
+    @work_queue = nil
+    @max_linger = 0
 
     class << self
-      # Spawns a pump task (recv loop, send loop, accept loop).
+      # Returns the root Async task inside the shared IO thread.
+      # Starts the thread exactly once (double-checked lock).
       #
-      # Inside an Async reactor: spawns as transient Async task.
-      # Outside: dispatches to the shared IO thread.
+      # @return [Async::Task]
       #
-      # @return [#stop] a stoppable handle
-      #
-      def spawn_pump(annotation: nil, &block)
-        if Async::Task.current?
-          Async(transient: true, annotation: annotation, &block)
-        else
-          handle = PumpHandle.new
-          ensure_started
-          @work_queue.push([:spawn, block, handle, annotation])
-          handle
+      def root_task
+        return @root_task if @root_task
+        @mutex.synchronize do
+          return @root_task if @root_task
+          ready       = Thread::Queue.new
+          @work_queue = Async::Queue.new
+          @thread     = Thread.new { run_reactor(ready) }
+          @thread.name = "omq-io"
+          @root_task = ready.pop
+          at_exit { stop! }
         end
+        @root_task
       end
 
-      # Runs a block synchronously within an Async context.
+
+      # Runs a block inside the Async reactor.
       #
       # Inside an Async reactor: runs directly.
-      # Outside: dispatches to the shared IO thread and waits.
+      # Outside: dispatches to the shared IO thread and blocks
+      # the calling thread until the result is available.
       #
       # @return [Object] the block's return value
       #
@@ -45,84 +54,62 @@ module OMQ
         if Async::Task.current?
           yield
         else
-          result_queue = Thread::Queue.new
-          ensure_started
-          @work_queue.push([:run, block, result_queue])
-          status, value = result_queue.pop
+          result = Thread::Queue.new
+          root_task # ensure started
+          @work_queue.push([block, result])
+          status, value = result.pop
           raise value if status == :error
           value
         end
       end
 
-      # Ensures the shared IO thread is running.
+
+      # Tracks the longest linger across all sockets on this thread.
       #
-      # @return [void]
+      # @param seconds [Numeric, nil] linger value (nil = unbounded)
       #
-      def ensure_started
-        @mutex.synchronize do
-          return if @thread&.alive?
-          ready = Thread::Queue.new
-          @thread = Thread.new { run_reactor(ready) }
-          @thread.name = "omq-io"
-          ready.pop
-        end
+      def track_linger(seconds)
+        @max_linger = [seconds || 0, @max_linger].max
       end
 
-      # Stops the shared IO thread. Used in tests.
+
+      # Stops the shared IO thread.
       #
       # @return [void]
       #
       def stop!
-        @work_queue.push([:stop])
-        @thread&.join(2)
-        @thread = nil
+        return unless @thread&.alive?
+        @work_queue&.push(nil)
+        @thread&.join(@max_linger + 1)
+        @thread     = nil
+        @root_task  = nil
+        @work_queue = nil
+        @max_linger = 0
       end
 
       private
 
-      # Runs the shared Async reactor loop, dispatching work items.
+      # Runs the shared Async reactor.
       #
-      # @param ready [Thread::Queue] signaled once the reactor is accepting work
+      # Processes work items dispatched via {.run} while engine
+      # tasks (accept loops, pumps, etc.) run as transient children.
+      #
+      # @param ready [Thread::Queue] receives the root task once started
       #
       def run_reactor(ready)
         Async do |task|
-          ready.push(true)
+          ready.push(task)
           loop do
             item = @work_queue.dequeue
-            case item[0]
-            when :spawn
-              _, block, handle, annotation = item
-              async_task = task.async(transient: true, annotation: annotation, &block)
-              handle.task = async_task
-            when :run
-              _, block, result_queue = item
-              task.async do
-                result_queue.push([:ok, block.call])
-              rescue => e
-                result_queue.push([:error, e])
-              end
-            when :stop
-              return
+            break if item.nil?
+            block, result = item
+            task.async do
+              result.push([:ok, block.call])
+            rescue => e
+              result.push([:error, e])
             end
           end
         end
-      end
-    end
-
-    # A stoppable handle for a pump task running in the shared reactor.
-    #
-    class PumpHandle
-      # @return [Async::Task, nil]
-      #
-      attr_accessor :task
-
-
-      # Stops the pump task.
-      #
-      # @return [void]
-      #
-      def stop
-        @task&.stop
       end
     end
   end

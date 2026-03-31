@@ -70,8 +70,11 @@ module OMQ
     # @return [void]
     #
     def bind(endpoint)
-      @engine.bind(endpoint)
-      @last_tcp_port = @engine.last_tcp_port
+      ensure_parent_task
+      Reactor.run do
+        @engine.bind(endpoint)
+        @last_tcp_port = @engine.last_tcp_port
+      end
     end
 
 
@@ -81,7 +84,8 @@ module OMQ
     # @return [void]
     #
     def connect(endpoint)
-      @engine.connect(endpoint)
+      ensure_parent_task
+      Reactor.run { @engine.connect(endpoint) }
     end
 
 
@@ -91,7 +95,7 @@ module OMQ
     # @return [void]
     #
     def disconnect(endpoint)
-      @engine.disconnect(endpoint)
+      Reactor.run { @engine.disconnect(endpoint) }
     end
 
 
@@ -101,7 +105,7 @@ module OMQ
     # @return [void]
     #
     def unbind(endpoint)
-      @engine.unbind(endpoint)
+      Reactor.run { @engine.unbind(endpoint) }
     end
 
 
@@ -145,7 +149,7 @@ module OMQ
     # Closes the socket.
     #
     def close
-      @engine.close
+      Reactor.run { @engine.close }
       nil
     end
 
@@ -184,6 +188,15 @@ module OMQ
       end
     rescue Async::TimeoutError, Timeout::Error
       raise IO::TimeoutError, "timed out"
+    end
+
+
+    # Sets the engine's parent task before the first bind or connect.
+    # Must be called OUTSIDE Reactor.run so that non-Async callers
+    # get the IO thread's root task, not an ephemeral work task.
+    #
+    def ensure_parent_task
+      @engine.capture_parent_task
     end
 
 

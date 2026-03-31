@@ -112,7 +112,7 @@ module OMQ
       end
 
       def start_subscription_listener(conn)
-        @tasks << Reactor.spawn_pump(annotation: "recv pump") do
+        @tasks << @engine.spawn_pump_task(annotation: "subscription listener") do
           loop do
             frame = conn.read_frame
             next unless frame.command?

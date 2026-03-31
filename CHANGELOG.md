@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Added
+
+- **Auto-close sockets via Async task tree** — all engine tasks (accept
+  loops, connection tasks, send/recv pumps, heartbeats, reconnect loops,
+  reapers) now live under the caller's Async task. When the `Async` block
+  exits, tasks are stopped and `ensure` blocks close IO resources.
+  Explicit `Socket#close` is no longer required (but remains available
+  and idempotent).
+- **Non-Async usage** — sockets work outside `Async do…end`. A shared IO
+  thread hosts the task tree; all blocking operations (bind, connect,
+  send, receive, close) are dispatched to it transparently via
+  `Reactor.run`. The IO thread shuts down cleanly at process exit,
+  respecting the longest linger across all sockets.
+
+### Fixed
+
+- **Reapers no longer crash on inproc DirectPipe** — PUSH and SCATTER
+  reapers skipped for DirectPipe connections that have no receive queue
+  (latent bug previously masked by transient task error swallowing).
+
+### Changed
+
+- **Transports are pure IO** — TCP and IPC transports no longer spawn
+  tasks. They create server sockets and return them; Engine owns the
+  accept loops.
+- **Reactor simplified** — `spawn_pump` and `PumpHandle` removed (dead
+  code). Reactor exposes `root_task` (shared IO thread's root Async
+  task) and `run` (cross-thread dispatch). `stop!` respects max linger.
+
 ### Performance
 
 - **Remove `.b` allocations from PUB/SUB subscription matching** —

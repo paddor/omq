@@ -157,9 +157,7 @@ module OMQ
         # @param engine [Engine] the connecting engine
         #
         def start_connect_retry(endpoint, engine)
-          Reactor.spawn_pump(annotation: "reconnect") do
-            ri  = engine.options.reconnect_interval
-            ivl = ri.is_a?(Range) ? ri.begin : ri
+          engine.spawn_inproc_retry(endpoint) do |ivl|
             loop do
               sleep ivl
               bound_engine = @mutex.synchronize { @registry[endpoint] }
