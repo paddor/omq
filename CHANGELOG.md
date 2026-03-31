@@ -16,6 +16,12 @@
   already a frozen binary string.
 - **Pre-frozen empty frame constants** for REQ/REP delimiter frames.
 
+### Fixed
+
+- **Remove redundant `respond_to?` guard in `drain_send_queues`** —
+  every routing strategy that exposes `send_queue` also implements
+  `send_pump_idle?`, so the second check was unnecessary.
+
 ## 0.9.0 — 2026-03-31
 
 ### Breaking

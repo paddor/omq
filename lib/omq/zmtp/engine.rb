@@ -410,8 +410,7 @@ module OMQ
         return unless @routing.respond_to?(:send_queue)
         deadline = timeout ? Async::Clock.now + timeout : nil
 
-        until @routing.send_queue.empty? &&
-              (!@routing.respond_to?(:send_pump_idle?) || @routing.send_pump_idle?)
+        until @routing.send_queue.empty? && @routing.send_pump_idle?
           if deadline
             remaining = deadline - Async::Clock.now
             break if remaining <= 0
