@@ -78,6 +78,7 @@ describe "PUSH/PULL delivery guarantees" do
   it "delivers messages when inproc connect happens before bind" do
     Async do
       push = OMQ::PUSH.new(nil, linger: 1)
+      push.reconnect_interval = RECONNECT_INTERVAL
       push.connect("inproc://dg-inproc-cb")
 
       # Send while no peer is bound yet
@@ -88,7 +89,7 @@ describe "PUSH/PULL delivery guarantees" do
       pull = OMQ::PULL.bind("inproc://dg-inproc-cb")
 
       # Give reconnect a moment
-      sleep 0.05
+      wait_connected(push, pull)
 
       push.send("late-1")
 
@@ -131,15 +132,15 @@ describe "PUSH/PULL delivery guarantees" do
   it "delivers messages when IPC connect happens before bind" do
     Async do
       path = "/tmp/omq-test-dg-ipc-cb-#{$$}.sock"
-      push = OMQ::PUSH.new(nil, linger: 1)
-      push.reconnect_interval = 0.05
+      push                      = OMQ::PUSH.new(nil, linger: 1)
+      push.reconnect_interval   = RECONNECT_INTERVAL
       push.connect("ipc://#{path}")
 
       push.send("early-1")
 
       sleep 0.02
       pull = OMQ::PULL.bind("ipc://#{path}")
-      sleep 0.1
+      wait_connected(push, pull)
 
       push.send("late-1")
 
@@ -166,7 +167,7 @@ describe "PUSH/PULL delivery guarantees" do
 
       push = OMQ::PUSH.new(nil, linger: 1)
       push.connect("ipc://#{path}")
-      sleep 0.05
+      wait_connected(push, pull)
 
       5.times { |i| push.send("msg-#{i}") }
 
@@ -187,15 +188,15 @@ describe "PUSH/PULL delivery guarantees" do
 
   it "delivers messages when TCP connect happens before bind" do
     Async do
-      push = OMQ::PUSH.new(nil, linger: 1)
-      push.reconnect_interval = 0.05
+      push                      = OMQ::PUSH.new(nil, linger: 1)
+      push.reconnect_interval   = RECONNECT_INTERVAL
       push.connect("tcp://127.0.0.1:19890")
 
       push.send("early-1")
 
       sleep 0.02
       pull = OMQ::PULL.bind("tcp://127.0.0.1:19890")
-      sleep 0.1
+      wait_connected(push, pull)
 
       push.send("late-1")
 
@@ -221,7 +222,7 @@ describe "PUSH/PULL delivery guarantees" do
 
       push = OMQ::PUSH.new(nil, linger: 1)
       push.connect("tcp://127.0.0.1:#{port}")
-      sleep 0.05
+      wait_connected(push, pull)
 
       5.times { |i| push.send("msg-#{i}") }
 
@@ -270,10 +271,10 @@ describe "PUSH/PULL delivery guarantees" do
       pull = OMQ::PULL.bind("tcp://127.0.0.1:0")
       port = pull.last_tcp_port
 
-      push = OMQ::PUSH.new(nil, linger: 1)
-      push.reconnect_interval = 0.05
+      push                      = OMQ::PUSH.new(nil, linger: 1)
+      push.reconnect_interval   = RECONNECT_INTERVAL
       push.connect("tcp://127.0.0.1:#{port}")
-      sleep 0.05
+      wait_connected(push, pull)
 
       # Send first batch
       5.times { |i| push.send("batch1-#{i}") }

@@ -16,21 +16,21 @@ describe "Reconnect after server restart" do
       port = server.last_tcp_port
 
       client = connect_class.new(nil, linger: 0)
-      client.reconnect_interval = 0.02
+      client.reconnect_interval = RECONNECT_INTERVAL
       client.connect("tcp://127.0.0.1:#{port}")
-      sleep 0.02
+      wait_connected(client, server)
 
       # First exchange
       exchange.call(client, server)
 
       # Kill server
       server.close
-      sleep 0.03
+      sleep 0.02
 
       # Restart on same port
       server2 = bind_class.new(nil, linger: 0)
       server2.bind("tcp://127.0.0.1:#{port}")
-      sleep 0.05
+      wait_connected(client, server2)
 
       # Second exchange after reconnect
       exchange.call(client, server2)
@@ -75,20 +75,20 @@ describe "Reconnect after server restart" do
       port = pub.last_tcp_port
 
       sub = OMQ::SUB.new(nil, linger: 0)
-      sub.reconnect_interval = 0.02
+      sub.reconnect_interval = RECONNECT_INTERVAL
       sub.connect("tcp://127.0.0.1:#{port}")
       sub.subscribe("")
-      sleep 0.02
+      pub.subscriber_joined.wait
 
       pub.send("first")
       assert_equal ["first"], sub.receive
 
       pub.close
-      sleep 0.03
+      sleep 0.02
 
       pub2 = OMQ::PUB.new(nil, linger: 0)
       pub2.bind("tcp://127.0.0.1:#{port}")
-      sleep 0.05
+      pub2.subscriber_joined.wait
 
       pub2.send("second")
       assert_equal ["second"], sub.receive
@@ -128,9 +128,9 @@ describe "Reconnect after server restart" do
       port = server.last_tcp_port
 
       client = OMQ::CLIENT.new(nil, linger: 0)
-      client.reconnect_interval = 0.02
+      client.reconnect_interval = RECONNECT_INTERVAL
       client.connect("tcp://127.0.0.1:#{port}")
-      sleep 0.02
+      wait_connected(client, server)
 
       client.send("req1")
       msg = server.receive
@@ -139,11 +139,11 @@ describe "Reconnect after server restart" do
       assert_equal ["rep1"], client.receive
 
       server.close
-      sleep 0.03
+      sleep 0.02
 
       server2 = OMQ::SERVER.new(nil, linger: 0)
       server2.bind("tcp://127.0.0.1:#{port}")
-      sleep 0.05
+      wait_connected(client, server2)
 
       client.send("req2")
       msg = server2.receive
@@ -161,20 +161,22 @@ describe "Reconnect after server restart" do
       port = radio.last_tcp_port
 
       dish = OMQ::DISH.new(nil, linger: 0)
-      dish.reconnect_interval = 0.02
+      dish.reconnect_interval = RECONNECT_INTERVAL
       dish.connect("tcp://127.0.0.1:#{port}")
       dish.join("g")
-      sleep 0.02
+      wait_connected(dish, radio)
+      sleep 0.01 # JOIN command propagation
 
       radio.publish("g", "first")
       assert_equal ["g", "first"], dish.receive
 
       radio.close
-      sleep 0.03
+      sleep 0.02
 
       radio2 = OMQ::RADIO.new(nil, linger: 0)
       radio2.bind("tcp://127.0.0.1:#{port}")
-      sleep 0.05
+      wait_connected(dish, radio2)
+      sleep 0.01 # JOIN command propagation
 
       radio2.publish("g", "second")
       assert_equal ["g", "second"], dish.receive
@@ -191,26 +193,26 @@ describe "Reconnect after server restart" do
       port = a.last_tcp_port
 
       b = OMQ::PEER.new(nil, linger: 0)
-      b.reconnect_interval = 0.02
+      b.reconnect_interval = RECONNECT_INTERVAL
       b.connect("tcp://127.0.0.1:#{port}")
-      sleep 0.02
+      wait_connected(a, b)
 
       # a knows b's routing_id
       routing = a.instance_variable_get(:@engine).routing
-      b_id = routing.instance_variable_get(:@connections_by_routing_id).keys.first
+      b_id    = routing.instance_variable_get(:@connections_by_routing_id).keys.first
       a.send_to(b_id, "hello")
       msg = b.receive
       assert_equal "hello", msg[1]
 
       a.close
-      sleep 0.03
+      sleep 0.02
 
       a2 = OMQ::PEER.new(nil, linger: 0)
       a2.bind("tcp://127.0.0.1:#{port}")
-      sleep 0.05
+      wait_connected(a2, b)
 
       routing2 = a2.instance_variable_get(:@engine).routing
-      b_id2 = routing2.instance_variable_get(:@connections_by_routing_id).keys.first
+      b_id2    = routing2.instance_variable_get(:@connections_by_routing_id).keys.first
       a2.send_to(b_id2, "reconnected")
       msg = b.receive
       assert_equal "reconnected", msg[1]

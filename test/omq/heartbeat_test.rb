@@ -6,14 +6,14 @@ describe "Heartbeat" do
   it "sends PING and receives PONG over TCP" do
     Async do
       rep = OMQ::REP.new(nil, linger: 0)
-      rep.heartbeat_interval = 0.1
-      rep.heartbeat_ttl = 1.0
+      rep.heartbeat_interval = 0.05
+      rep.heartbeat_ttl      = 0.5
       rep.bind("tcp://127.0.0.1:0")
       port = rep.last_tcp_port
 
       req = OMQ::REQ.new(nil, linger: 0)
-      req.heartbeat_interval = 0.1
-      req.heartbeat_ttl = 1.0
+      req.heartbeat_interval = 0.05
+      req.heartbeat_ttl      = 0.5
       req.connect("tcp://127.0.0.1:#{port}")
 
       # Exchange a message (heartbeats run in background)
@@ -26,7 +26,7 @@ describe "Heartbeat" do
       assert_equal ["world"], reply
 
       # Wait — heartbeats should keep the connection alive
-      sleep 0.05
+      sleep 0.02
 
       # Another exchange should still work
       req.send("still alive")
@@ -45,8 +45,8 @@ describe "Heartbeat" do
   it "detects dead peer via heartbeat timeout" do
     Async do
       rep = OMQ::REP.new(nil, linger: 0)
-      rep.heartbeat_interval     = 0.05
-      rep.heartbeat_timeout = 0.15
+      rep.heartbeat_interval = 0.02
+      rep.heartbeat_timeout  = 0.06
       rep.bind("tcp://127.0.0.1:0")
       port = rep.last_tcp_port
 
@@ -64,10 +64,10 @@ describe "Heartbeat" do
       req.close
 
       # Wait for heartbeat timeout to detect the dead peer
-      sleep 0.15
+      sleep 0.08
 
       # REP should have detected dead peer. Try to receive — should timeout.
-      rep.recv_timeout = 0.1
+      rep.recv_timeout = 0.05
       assert_raises(IO::TimeoutError) { rep.receive }
     ensure
       rep&.close

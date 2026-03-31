@@ -67,7 +67,7 @@ describe "Connection error handling" do
 
       # Client connects
       req = OMQ::REQ.new(nil, linger: 0)
-      req.reconnect_interval = 0.05
+      req.reconnect_interval = RECONNECT_INTERVAL
       req.connect("ipc://#{path}")
 
       # First exchange works
@@ -81,14 +81,14 @@ describe "Connection error handling" do
       # Kill the server (removes socket file)
       rep.close
 
-      sleep 0.03
+      sleep 0.02
 
       # Restart server on same path
       rep2 = OMQ::REP.new(nil, linger: 0)
       rep2.bind("ipc://#{path}")
 
       # Wait for reconnection
-      sleep 0.08
+      wait_connected(req, rep2)
 
       req.send("reconnected")
       msg = rep2.receive
@@ -108,7 +108,7 @@ describe "Connection error handling" do
 
       # Start a raw server that accepts and immediately resets
       server = TCPServer.new("127.0.0.1", 0)
-      port = server.local_address.ip_port
+      port   = server.local_address.ip_port
 
       resetter = Async do
         client = server.accept
@@ -120,7 +120,7 @@ describe "Connection error handling" do
       req.connect("tcp://127.0.0.1:#{port}")
 
       # Wait for the reset + reconnect attempt
-      sleep 0.03
+      sleep 0.02
       resetter.wait
       server.close
 

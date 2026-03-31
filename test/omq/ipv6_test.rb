@@ -58,8 +58,8 @@ describe "IPv6" do
 
       sub = OMQ::SUB.connect("tcp://[::1]:#{port}", prefix: "topic.")
 
-      # Give subscription time to propagate
-      sleep 0.05
+      # Wait for subscription to propagate
+      pub.subscriber_joined.wait
 
       pub.send("topic.data")
       msg = sub.receive

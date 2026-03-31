@@ -57,14 +57,14 @@ describe "Linger" do
       tmp.close
 
       push = OMQ::PUSH.new(nil, linger: 5)
-      push.reconnect_interval = 0.02
+      push.reconnect_interval = RECONNECT_INTERVAL
       push.connect("tcp://127.0.0.1:#{port}")
 
       # Send while no peer is listening — message queues
       push.send("early")
 
       # Bind after a delay — reconnect should find it during linger
-      sleep 0.05
+      sleep 0.02
       pull = OMQ::PULL.bind("tcp://127.0.0.1:#{port}")
 
       # Close push — linger should drain the queued message
@@ -85,7 +85,7 @@ describe "Linger" do
       tmp.close
 
       push = OMQ::PUSH.new(nil, linger: 5)
-      push.reconnect_interval = 0.02
+      push.reconnect_interval = RECONNECT_INTERVAL
       push.connect("tcp://127.0.0.1:#{port}")
 
       3.times { |i| push.send("msg-#{i}") }
@@ -94,7 +94,7 @@ describe "Linger" do
       closer = Async { push.close }
 
       # Bind while close is draining
-      sleep 0.05
+      sleep 0.02
       pull = OMQ::PULL.bind("tcp://127.0.0.1:#{port}")
 
       closer.wait
@@ -115,7 +115,7 @@ describe "Linger" do
 
       push = OMQ::PUSH.new(nil, linger: 2)
       push.connect("tcp://127.0.0.1:#{port}")
-      sleep 0.05
+      wait_connected(push, pull)
 
       20.times { |i| push.send("drain-#{i}") }
       push.close

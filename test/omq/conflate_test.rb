@@ -15,7 +15,7 @@ describe "PUB conflate" do
       # Burst: many updates
       100.times { |i| pub.send("msg-#{i}") }
 
-      sub.recv_timeout = 0.1
+      sub.recv_timeout = 0.05
       received = []
       loop do
         received << sub.receive.first
@@ -38,7 +38,7 @@ describe "PUB conflate" do
 
       10.times { |i| pub.send("msg-#{i}") }
 
-      sub.recv_timeout = 0.1
+      sub.recv_timeout = 0.05
       received = []
       loop do
         received << sub.receive.first
@@ -67,7 +67,7 @@ describe "RADIO conflate" do
 
       100.times { |i| radio.publish("sensor", "value-#{i}") }
 
-      dish.recv_timeout = 0.1
+      dish.recv_timeout = 0.05
       received = []
       loop do
         received << dish.receive.last

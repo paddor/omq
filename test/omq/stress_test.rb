@@ -110,7 +110,7 @@ describe "Stress tests" do
       end
 
       # Wait for subscriptions to propagate
-      sleep 0.01
+      pub.subscriber_joined.wait
 
       # Publish messages
       Async { n_msgs.times { |i| pub.send("msg-#{i}") } }

@@ -6,8 +6,8 @@ describe "Auto-reconnection" do
   it "connects silently when server is not yet running" do
     Async do
       # Client connects before server exists — should not raise
-      req = OMQ::REQ.new(nil, linger: 0)
-      req.reconnect_interval = 0.1
+      req                      = OMQ::REQ.new(nil, linger: 0)
+      req.reconnect_interval   = RECONNECT_INTERVAL
       req.connect("tcp://127.0.0.1:19876")
 
       # Start server after a delay
@@ -16,7 +16,7 @@ describe "Auto-reconnection" do
       rep.bind("tcp://127.0.0.1:19876")
 
       # Wait for background reconnect to succeed
-      sleep 0.05
+      wait_connected(req, rep)
 
       req.send("late start")
       msg = rep.receive
@@ -39,6 +39,7 @@ describe "Auto-reconnection" do
 
       # Client connects
       req = OMQ::REQ.new(nil, linger: 0)
+      req.reconnect_interval = RECONNECT_INTERVAL
       req.connect("tcp://127.0.0.1:#{port}")
 
       # First exchange works
@@ -60,7 +61,7 @@ describe "Auto-reconnection" do
       rep2.bind("tcp://127.0.0.1:#{port}")
 
       # Wait for reconnection
-      sleep 0.05
+      wait_connected(req, rep2)
 
       # Second exchange should work after reconnection
       req.send("reconnected")
