@@ -1,4 +1,4 @@
-# OMQ — ZeroMQ in pure Ruby
+# OMQ — Where did the C dependency go!?
 
 [![CI](https://github.com/zeromq/omq/actions/workflows/ci.yml/badge.svg)](https://github.com/zeromq/omq/actions/workflows/ci.yml)
 [![Gem Version](https://img.shields.io/gem/v/omq?color=e9573f)](https://rubygems.org/gems/omq)
@@ -7,7 +7,7 @@
 
 `gem install omq` — that's it. No libzmq, no compiler, no system packages. Just Ruby.
 
-OMQ implements the [ZMTP 3.1](https://rfc.zeromq.org/spec/23/) wire protocol from scratch using [Async](https://github.com/socketry/async) fibers. It speaks native ZeroMQ on the wire and interoperates with libzmq, pyzmq, CZMQ, and everything else in the ZMQ ecosystem.
+OMQ builds ZeroMQ socket patterns on top of [protocol-zmtp](https://github.com/paddor/protocol-zmtp) (a pure Ruby [ZMTP 3.1](https://rfc.zeromq.org/spec/23/) codec) using [Async](https://github.com/socketry/async) fibers. It speaks native ZeroMQ on the wire and interoperates with libzmq, pyzmq, CZMQ, and everything else in the ZMQ ecosystem.
 
 > **234k msg/s** inproc | **49k msg/s** ipc | **36k msg/s** tcp
 >
@@ -31,12 +31,12 @@ See [GETTING_STARTED.md](GETTING_STARTED.md) for a ~30 min walkthrough of all ma
 
 - **Zero dependencies on C** — no extensions, no FFI, no libzmq. `gem install` just works everywhere
 - **Fast** — YJIT-optimized hot paths, batched sends, 234k msg/s inproc with 12 µs latency
-- **`omq` CLI** — pipe, filter, and transform messages from the terminal with Ruby eval, Ractor parallelism, and [script handlers](CLI.md#script-handlers--r)
+- **[`omq` CLI](https://github.com/paddor/omq-cli)** — `gem install omq-cli` for a command-line tool with Ruby eval, Ractor parallelism, and script handlers
 - **Every socket pattern** — req/rep, pub/sub, push/pull, dealer/router, xpub/xsub, pair, and all draft types
 - **Every transport** — tcp, ipc (Unix domain sockets), inproc (in-process queues)
 - **Async-native** — built on fibers, non-blocking from the ground up. A shared IO thread handles sockets outside of Async — no reactor needed for simple scripts
 - **Wire-compatible** — interoperates with libzmq, pyzmq, CZMQ over tcp and ipc
-- **Bind/connect order doesn't matter** — connect before bind, bind before connect, peers come and go. ZeroMQ reconnects and requeues automatically
+- **Bind/connect order doesn't matter** — connect before bind, bind before connect, peers come and go. ZeroMQ reconnects automatically and queued messages drain when peers arrive
 
 For architecture internals, see [DESIGN.md](DESIGN.md).
 
@@ -150,58 +150,18 @@ All sockets are thread-safe. Default HWM is 1000 messages per socket. Classes li
 | **PEER** | Routing-ID | Fair-queue | Block |
 | **CHANNEL** | Exclusive 1-to-1 | Exclusive 1-to-1 | Block |
 
-## omq — CLI tool
+## CLI
 
-`omq` is a command-line tool for sending and receiving messages on any OMQ socket. Like `nngcat` from libnng, but with Ruby superpowers.
+Install [omq-cli](https://github.com/paddor/omq-cli) for a command-line tool that sends, receives, pipes, and transforms ZeroMQ messages from the terminal:
 
 ```sh
-# Echo server
+gem install omq-cli
+
 omq rep -b tcp://:5555 --echo
-
-# Upcase server — -e evals Ruby on each incoming message
-omq rep -b tcp://:5555 -e '$F.map(&:upcase)'
-
-# Client
 echo "hello" | omq req -c tcp://localhost:5555
-# => HELLO
-
-# PUB/SUB
-omq sub -b tcp://:5556 -s "weather."  &
-echo "weather.nyc 72F" | omq pub -c tcp://localhost:5556 -d 0.3
-
-# Pipeline with filtering
-tail -f /var/log/syslog | omq push -c tcp://collector:5557
-omq pull -b tcp://:5557 -e 'next unless /error/; $F'
-
-# Transform outgoing messages with -E
-echo hello | omq push -c tcp://localhost:5557 -E '$F.map(&:upcase)'
-
-# REQ: transform request and reply independently
-echo hello | omq req -c tcp://localhost:5555 \
-  -E '$F.map(&:upcase)' -e '$F.map(&:reverse)'
-
-# Pipe: PULL → eval → PUSH in one process
-omq pipe -c ipc://@work -c ipc://@sink -e '$F.map(&:upcase)'
-
-# Pipe with Ractor workers for CPU parallelism (-P = all CPUs)
-omq pipe -c ipc://@work -c ipc://@sink -P -r./fib -e 'fib(Integer($_)).to_s'
 ```
 
-`-e` (recv-eval) transforms incoming messages, `-E` (send-eval) transforms outgoing messages. `$F` is the message parts array, `$_` is the first part. Use `-r` to require gems or load scripts that register handlers via `OMQ.incoming` / `OMQ.outgoing`:
-
-```ruby
-# my_handler.rb
-db = DB.connect("postgres://localhost/app")
-
-OMQ.incoming { db.query($F.first) }
-at_exit { db.close }
-```
-
-```sh
-omq pull -b tcp://:5557 -r./my_handler.rb
-```
-
-See [CLI.md](CLI.md) for full documentation, or `omq --help` / `omq --examples`.
+See the [omq-cli README](https://github.com/paddor/omq-cli) for full documentation.
 
 ## Development
 

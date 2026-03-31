@@ -1,14 +1,12 @@
 ## TODO
 
-* Nuckle: pure Ruby drop-in replacement for RbNaCl (no libsodium needed), for those moments you just want it to quack securely (side-channel attacks aside)
-
+* omq-keygen is gone now. add its functionality to the main CLI. will require libsodium. is it safe to generate keys with Nuckle?
 * io-endpoint integration: OMQ-aware endpoints, on Zeroids
-* memory leak tests: Inproc::Registry, maybe?
+  - Sam Williams says: AddressEndpoint and CompositeEndpoint already solve some of those issues.
+* memory leak tests for ipc and tcp
 * snap package: both gems, ruby interpreter and libsodium included = one powerful cli tool to rule it all
 * pure Ruby NNG just like this gem
 
 
 ## Future ideas
-- Object#call detection in -r loaded files
-- --setup/--teardown for BEGIN/END semantics
 - OMG: OMQ for NNG

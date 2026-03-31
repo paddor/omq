@@ -1,7 +1,7 @@
 # OMQ Design
 
-Pure Ruby implementation of ZMTP 3.1 (the ZeroMQ wire protocol) on top of
-Ruby's Fiber::Scheduler and the Async ecosystem.
+Pure Ruby ZeroMQ built on [protocol-zmtp](https://github.com/paddor/protocol-zmtp)
+(ZMTP 3.1 wire protocol) and the Async ecosystem.
 
 ## Why
 
@@ -16,10 +16,10 @@ exists to handle the reality that none of this is true:
 | The network is reliable | Auto-reconnect with backoff; linger drain on close |
 | Latency is zero | Async send queues decouple producers from consumers |
 | Bandwidth is infinite | High-water marks (HWM) bound queue depth per connection |
-| The network is secure | CURVE encryption (libsodium, via omq-curve gem) |
+| The network is secure | CURVE encryption (via protocol-zmtp, with RbNaCl or Nuckle) |
 | Topology doesn't change | Bind/connect separation; peers come and go freely |
 | There is one administrator | No broker required; any topology works peer-to-peer |
-| Transport cost is zero | Batched writes reduce syscalls; inproc skips the kernel; optional Zstd compression |
+| Transport cost is zero | Batched writes reduce syscalls; inproc skips the kernel |
 | The network is homogeneous | ZMTP is a wire protocol; interop with libzmq, nanomsg, etc. |
 
 OMQ brings all of this to Ruby without C extensions or FFI.
@@ -48,6 +48,9 @@ OMQ brings all of this to Ruby without C extensions or FFI.
 
 Every socket spawns a tree of Async tasks. All tasks are **transient** --
 they don't prevent the reactor from exiting when user code finishes.
+The reactor stays alive during linger because `Socket#close` blocks
+(inside the user's fiber) until send queues drain -- transient tasks
+are cleaned up afterward.
 
 ```
 Async (user code)
@@ -135,22 +138,6 @@ For fan-out (PUB/RADIO), one published message is written to all matching
 subscribers before flushing -- so N subscribers see 1 flush each, not N
 flushes per message.
 
-## ZMTP 3.1 wire protocol
-
-OMQ implements the full ZMTP 3.1 specification:
-
-**Greeting** (64 bytes): version negotiation, security mechanism, as-server flag.
-
-**Frames**: 1-byte flags (MORE, LONG, COMMAND) + size + body. Short frames
-use 1-byte size (max 255); long frames use 8-byte big-endian size.
-
-**Commands**: READY (handshake properties), SUBSCRIBE/CANCEL (PUB/SUB),
-JOIN/LEAVE (RADIO/DISH), PING/PONG (heartbeat with TTL).
-
-**Security**: NULL (no auth) built-in. CURVE (NaCl/libsodium encryption)
-via the `omq-curve` gem. The mechanism is pluggable -- set `socket.mechanism`
-before connecting.
-
 ## Transports
 
 **TCP** -- standard network sockets. Bind auto-selects port with `:0`.
@@ -158,13 +145,10 @@ before connecting.
 **IPC** -- Unix domain sockets. Supports file-based paths and Linux abstract
 namespace (`ipc://@name`). File sockets are cleaned up on unbind.
 
-**inproc** -- in-process. Connects two engines via DirectPipe objects.
-No ZMTP framing, no kernel. Message parts are frozen strings passed
-as Ruby arrays through the send queue and recv queue (two hops, same
-as TCP/IPC). The fast path sets `direct_recv_queue` on the peer's
-DirectPipe so the send pump enqueues directly into the peer's recv
-queue instead of going through a Connection. Subscription commands
-(PUB/SUB, RADIO/DISH) flow through separate Async::Queues.
+**inproc** -- in-process. Two in-memory queues connect a pair of engines --
+no ZMTP framing, no kernel. Message parts are frozen strings passed as
+Ruby arrays. Subscription commands (PUB/SUB, RADIO/DISH) flow through
+separate queues.
 
 All TCP and IPC connections are wrapped in `IO::Stream::Buffered` which
 provides `read_exactly(n)` for reading ZMTP frames and buffered writes
@@ -192,14 +176,7 @@ XPUB/XSUB are like PUB/SUB but expose subscription events to the application.
 - **io-stream** -- buffered IO wrapper (read_exactly, flush, connection errors)
 - **io-event** -- low-level event loop (epoll/io_uring/kqueue)
 
-Optional: **omq-curve** for CURVE encryption, **msgpack** and **zstd-ruby**
-for the CLI's msgpack format and compression.
-
-## CLI (`omq`)
-
-The `omq` executable is a command-line tool for any OMQ socket type.
-It reads from stdin, sends messages, receives messages, and writes to stdout.
-Supports all socket types, formats (ascii, quoted, jsonl, msgpack, raw),
-CURVE encryption, Zstandard compression, Ruby eval (`-e`), and require (`-r`).
-
-See `omq --help` for usage, `omq --examples` for annotated examples.
+Optional: **protocol-zmtp CURVE mechanism** with
+[nuckle](https://github.com/paddor/nuckle) (pure Ruby) or
+[rbnacl](https://github.com/RubyCrypto/rbnacl) (libsodium) for
+CURVE encryption.
