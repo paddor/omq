@@ -25,7 +25,7 @@ describe 'Heartbeat' do
 
     Async do |task|
       pub = OMQ::PUB.bind(endpoint)
-      sub = OMQ::SUB.connect(endpoint, prefix: 'HEARTBEAT')
+      sub = OMQ::SUB.connect(endpoint, subscribe: 'HEARTBEAT')
       sub.recv_timeout = dead_threshold
 
       publisher = task.async do

@@ -140,7 +140,7 @@ describe "Interop: OMQ ↔ CZTop" do
       port = pub.bind("tcp://127.0.0.1:*")
 
       Async do
-        sub = OMQ::SUB.connect("tcp://127.0.0.1:#{port}", prefix: "alert.")
+        sub = OMQ::SUB.connect("tcp://127.0.0.1:#{port}", subscribe: "alert.")
         wait_connected(sub)
         sleep 0.02 # subscription propagation to CZTop PUB
 

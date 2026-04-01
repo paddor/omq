@@ -7,7 +7,7 @@ endpoint = ARGV[0] || "tcp://localhost:5556"
 prefix   = ARGV[1] || ""
 
 Async do
-  sub = OMQ::SUB.new(endpoint, prefix: prefix)
+  sub = OMQ::SUB.new(endpoint, subscribe: prefix)
   label = prefix.empty? ? "#{prefix.inspect} (everything)" : prefix.inspect
   puts "Subscribed to #{label} on #{endpoint.delete_prefix(">")} ..."
 

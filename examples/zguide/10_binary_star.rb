@@ -53,7 +53,7 @@ describe 'Binary Star' do
       backup_rep = OMQ::REP.bind(backup_ep)
       backup_rep.recv_timeout = 2
 
-      backup_sub = OMQ::SUB.connect(hb_ep, prefix: 'HB')
+      backup_sub = OMQ::SUB.connect(hb_ep, subscribe: 'HB')
       backup_sub.recv_timeout = 0.3
 
       backup_task = task.async do

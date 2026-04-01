@@ -80,7 +80,7 @@ describe "recv_timeout on other socket types" do
   it "works on SUB" do
     Async do
       pub = OMQ::PUB.bind("inproc://timeout-sub")
-      sub = OMQ::SUB.connect("inproc://timeout-sub", prefix: "")
+      sub = OMQ::SUB.connect("inproc://timeout-sub", subscribe: "")
       sub.recv_timeout = 0.02
 
       assert_raises(IO::TimeoutError) { sub.receive }

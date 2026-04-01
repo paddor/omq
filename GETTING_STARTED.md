@@ -162,8 +162,9 @@ N workers without changing client code.
 
 PUB sends to all connected SUBs. SUB filters by topic prefix — filtering
 happens on the *publisher* side (since ZMQ 3.x), so unwanted messages
-don't even cross the network. In OMQ, `SUB.new` subscribes to
-everything by default; pass `prefix:` to filter or `prefix: nil` to defer.
+don't even cross the network. In OMQ, `SUB.new` starts with no
+subscriptions — pass `subscribe:` to filter by prefix, or call
+`#subscribe` later.
 
 Late-joining subscribers miss earlier messages — this is by design,
 like tuning into a radio station. If you need catch-up, layer a
@@ -188,17 +189,17 @@ loop do
 end
 
 # --- subscriber ---
-sub = OMQ::SUB.connect('tcp://localhost:5556', prefix: 'weather.nyc')
+sub = OMQ::SUB.connect('tcp://localhost:5556', subscribe: 'weather.nyc')
 loop do
   msg = sub.receive             # => ["weather.nyc 74F"]
   puts msg.first
 end
 
-# --- subscribe to everything (the default) ---
-sub = OMQ::SUB.connect('tcp://localhost:5556')
+# --- subscribe to everything ---
+sub = OMQ::SUB.connect('tcp://localhost:5556', subscribe: '')
 
-# --- defer subscription, add later ---
-sub = OMQ::SUB.new('tcp://localhost:5556', prefix: nil)
+# --- subscribe later ---
+sub = OMQ::SUB.new('tcp://localhost:5556')
 sub.subscribe('weather.sfo')
 ```
 
@@ -701,7 +702,7 @@ Async do |task|
   end
 
   # Subscriber side
-  sub = OMQ::SUB.connect('tcp://localhost:5555', prefix: 'HEARTBEAT')
+  sub = OMQ::SUB.connect('tcp://localhost:5555', subscribe: 'HEARTBEAT')
   sub.recv_timeout = HEARTBEAT_IVL * 1.5
   misses = 0
 

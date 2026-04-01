@@ -24,8 +24,8 @@ describe 'Publish-Subscribe' do
 
     Async do |task|
       pub = OMQ::PUB.bind(endpoint)
-      nyc_sub = OMQ::SUB.connect(endpoint, prefix: 'weather.nyc')
-      sfo_sub = OMQ::SUB.connect(endpoint, prefix: 'weather.sfo')
+      nyc_sub = OMQ::SUB.connect(endpoint, subscribe: 'weather.nyc')
+      sfo_sub = OMQ::SUB.connect(endpoint, subscribe: 'weather.sfo')
       nyc_sub.recv_timeout = 1
       sfo_sub.recv_timeout = 1
 
@@ -104,7 +104,7 @@ describe 'Publish-Subscribe' do
         end
       end
 
-      sub = OMQ::SUB.connect(downstream_ep, prefix: 'data')
+      sub = OMQ::SUB.connect(downstream_ep, subscribe: 'data')
       sub.recv_timeout = 1
 
       subscriber = task.async do

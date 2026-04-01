@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- **SUB/XSUB `prefix:` kwarg renamed to `subscribe:`** — aligns with
+  ZeroMQ conventions. `subscribe: nil` (no subscription) remains the
+  default; pass `subscribe: ''` to subscribe to everything, or
+  `subscribe: 'topic.'` for a prefix filter.
+
 ## 0.10.0 — 2026-04-01
 
 ### Added

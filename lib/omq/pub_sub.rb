@@ -21,13 +21,13 @@ module OMQ
 
     # @param endpoints [String, nil]
     # @param linger [Integer]
-    # @param prefix [String, nil] subscription prefix; +nil+ (default)
+    # @param subscribe [String, nil] subscription prefix; +nil+ (default)
     #   means no subscription — call {#subscribe} explicitly.
     #
-    def initialize(endpoints = nil, linger: 0, prefix: nil)
+    def initialize(endpoints = nil, linger: 0, subscribe: nil)
       _init_engine(:SUB, linger: linger)
       _attach(endpoints, default: :connect)
-      subscribe(prefix) unless prefix.nil?
+      self.subscribe(subscribe) unless subscribe.nil?
     end
 
     # Subscribes to a topic prefix.
@@ -65,13 +65,13 @@ module OMQ
 
     # @param endpoints [String, nil]
     # @param linger [Integer]
-    # @param prefix [String, nil] subscription prefix; +nil+ (default)
+    # @param subscribe [String, nil] subscription prefix; +nil+ (default)
     #   means no subscription — send a subscribe frame explicitly.
     #
-    def initialize(endpoints = nil, linger: 0, prefix: nil)
+    def initialize(endpoints = nil, linger: 0, subscribe: nil)
       _init_engine(:XSUB, linger: linger)
       _attach(endpoints, default: :connect)
-      send("\x01#{prefix}".b) unless prefix.nil?
+      send("\x01#{subscribe}".b) unless subscribe.nil?
     end
   end
 end

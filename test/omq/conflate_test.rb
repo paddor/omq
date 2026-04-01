@@ -10,7 +10,7 @@ describe "PUB conflate" do
       pub = OMQ::PUB.new(nil, conflate: true)
       pub.bind("inproc://conflate-pub")
 
-      sub = OMQ::SUB.connect("inproc://conflate-pub", prefix: "")
+      sub = OMQ::SUB.connect("inproc://conflate-pub", subscribe: "")
 
       # Burst: many updates
       100.times { |i| pub.send("msg-#{i}") }
@@ -34,7 +34,7 @@ describe "PUB conflate" do
   it "delivers all messages when conflate is disabled" do
     Async do
       pub = OMQ::PUB.bind("inproc://no-conflate-pub")
-      sub = OMQ::SUB.connect("inproc://no-conflate-pub", prefix: "")
+      sub = OMQ::SUB.connect("inproc://no-conflate-pub", subscribe: "")
 
       10.times { |i| pub.send("msg-#{i}") }
 

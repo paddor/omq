@@ -56,7 +56,7 @@ def bench_pub_sub(transport, addr, n_subs:)
 
   Async do
     pub  = OMQ::PUB.bind(addr)
-    subs = n_subs.times.map { OMQ::SUB.connect(addr, prefix: "") }
+    subs = n_subs.times.map { OMQ::SUB.connect(addr, subscribe: "") }
     sleep 0.05
 
     # Warm up

@@ -30,7 +30,7 @@ describe "XPUB/XSUB" do
   it "XPUB receives subscription notifications" do
     Async do
       xpub = OMQ::XPUB.bind("inproc://xpub-sub-1")
-      sub  = OMQ::SUB.new(nil, linger: 0, prefix: nil)
+      sub  = OMQ::SUB.new(nil, linger: 0)
       sub.connect("inproc://xpub-sub-1")
       sub.subscribe("weather.")
 
@@ -46,7 +46,7 @@ describe "XPUB/XSUB" do
   it "XPUB delivers messages to matching subscribers" do
     Async do
       xpub = OMQ::XPUB.bind("inproc://xpub-sub-2")
-      sub  = OMQ::SUB.connect("inproc://xpub-sub-2", prefix: "news.")
+      sub  = OMQ::SUB.connect("inproc://xpub-sub-2", subscribe: "news.")
 
       # Consume subscription notification
       xpub.receive
@@ -80,10 +80,10 @@ describe "XPUB/XSUB" do
     end
   end
 
-  it "XSUB subscribes via prefix: kwarg" do
+  it "XSUB subscribes via subscribe: kwarg" do
     Async do
       pub  = OMQ::PUB.bind("inproc://pub-xsub-2")
-      xsub = OMQ::XSUB.connect("inproc://pub-xsub-2", prefix: "fx.")
+      xsub = OMQ::XSUB.connect("inproc://pub-xsub-2", subscribe: "fx.")
 
       Async::Task.current.yield
 
@@ -99,7 +99,7 @@ describe "XPUB/XSUB" do
   it "XPUB receives unsubscription notifications" do
     Async do
       xpub = OMQ::XPUB.bind("inproc://xpub-unsub-1")
-      sub  = OMQ::SUB.new(nil, linger: 0, prefix: nil)
+      sub  = OMQ::SUB.new(nil, linger: 0)
       sub.connect("inproc://xpub-unsub-1")
       sub.subscribe("topic.")
 
@@ -124,7 +124,7 @@ describe "XPUB/XSUB" do
       xpub = OMQ::XPUB.bind("tcp://127.0.0.1:0")
       port = xpub.last_tcp_port
 
-      sub = OMQ::SUB.new(nil, linger: 0, prefix: nil)
+      sub = OMQ::SUB.new(nil, linger: 0)
       sub.connect("tcp://127.0.0.1:#{port}")
       sub.subscribe("topic.")
 
@@ -142,7 +142,7 @@ describe "XPUB/XSUB" do
       xpub = OMQ::XPUB.bind("tcp://127.0.0.1:0")
       port = xpub.last_tcp_port
 
-      sub = OMQ::SUB.connect("tcp://127.0.0.1:#{port}", prefix: "news.")
+      sub = OMQ::SUB.connect("tcp://127.0.0.1:#{port}", subscribe: "news.")
 
       # Consume subscription notification
       xpub.receive

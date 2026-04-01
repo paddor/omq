@@ -94,7 +94,7 @@ Async do
   OMQ::Transport::Inproc.reset!
 
   pub = OMQ::PUB.bind("inproc://bench_pub")
-  sub = OMQ::SUB.connect("inproc://bench_pub", prefix: "t.")
+  sub = OMQ::SUB.connect("inproc://bench_pub", subscribe: "t.")
   sleep 0.01
   50.times { pub << "t.#{PAYLOAD}"; sub.receive }
 
