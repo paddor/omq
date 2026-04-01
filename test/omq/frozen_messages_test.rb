@@ -49,6 +49,23 @@ describe "received messages are deep-frozen" do
       end
     end
 
+    it "handles mutable UTF-8 strings" do
+      Async do
+        push = ØMQ::PUSH.bind("inproc://frozen-send-utf8")
+        pull = ØMQ::PULL.connect("inproc://frozen-send-utf8")
+
+        msg = "ØMQ is fast".dup
+        refute msg.frozen?
+        push << msg
+        received = pull.receive
+        assert_equal ["ØMQ is fast".b], received
+        assert_deep_frozen received
+      ensure
+        push&.close
+        pull&.close
+      end
+    end
+
     it "handles already-frozen input" do
       Async do
         push = OMQ::PUSH.bind("inproc://frozen-send-prefrozen")
