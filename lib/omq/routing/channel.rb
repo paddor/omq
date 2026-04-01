@@ -54,10 +54,9 @@ module OMQ
         @tasks.clear
       end
 
-      private
-
       def send_pump_idle? = @send_pump_idle
 
+      private
 
       def start_send_pump(conn)
         @send_pump = @engine.spawn_pump_task(annotation: "send pump") do

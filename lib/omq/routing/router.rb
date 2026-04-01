@@ -71,10 +71,9 @@ module OMQ
         @tasks.clear
       end
 
-      private
-
       def send_pump_idle? = @send_pump_idle
 
+      private
 
       def start_send_pump
         @send_pump_started = true
