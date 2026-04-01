@@ -11,22 +11,22 @@ module OMQ
   # the socket's send/recv queues.
   #
   module Routing
-    # Maximum messages to drain from the send queue per flush cycle.
-    MAX_SEND_BATCH = 64
-
     # Shared frozen empty binary string to avoid repeated allocations.
     EMPTY_BINARY = "".b.freeze
 
-    # Drains up to +max+ additional messages from +queue+ into +batch+
-    # without blocking. Call after the initial blocking dequeue.
+    # Drains all available messages from +queue+ into +batch+ without
+    # blocking. Call after the initial blocking dequeue.
+    #
+    # No cap is needed: IO::Stream auto-flushes at 64 KB, so the
+    # write buffer hits the wire naturally under sustained load.
+    # The explicit flush after the batch pushes out the remainder.
     #
     # @param queue [Async::LimitedQueue]
     # @param batch [Array]
-    # @param max [Integer]
     # @return [void]
     #
-    def self.drain_send_queue(queue, batch, max = MAX_SEND_BATCH)
-      while batch.size < max
+    def self.drain_send_queue(queue, batch)
+      loop do
         msg = queue.dequeue(timeout: 0)
         break unless msg
         batch << msg
