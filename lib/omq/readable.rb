@@ -9,25 +9,16 @@ module OMQ
     # Maximum messages to prefetch from the recv queue per drain.
     RECV_BATCH_SIZE = 64
 
-    # Receives the next message. Internally prefetches up to
-    # {RECV_BATCH_SIZE} messages per queue drain to amortize
-    # scheduling overhead.
+    # Receives the next message. Returns from a local prefetch
+    # buffer when available, otherwise drains up to
+    # {RECV_BATCH_SIZE} messages from the recv queue in one
+    # synchronized dequeue.
     #
     # @return [Array<String>] message parts
     # @raise [IO::TimeoutError] if read_timeout exceeded
     #
     def receive
-      if @recv_buffer && @recv_buffer.size > 0
-        @recv_buffer.shift
-      else
-        batch = Reactor.run { with_timeout(@options.read_timeout) { @engine.dequeue_recv_batch(RECV_BATCH_SIZE) } }
-        if batch.size == 1
-          batch.first
-        else
-          @recv_buffer = batch
-          @recv_buffer.shift
-        end
-      end
+      @recv_buffer.shift || fill_recv_buffer
     end
 
     # Receives up to +max+ messages. Blocks until at least one is
@@ -37,21 +28,7 @@ module OMQ
     # @return [Array<Array<String>>] array of messages
     #
     def receive_messages(max)
-      if @recv_buffer && @recv_buffer.size > 0
-        # Drain buffer first, then queue if needed
-        if @recv_buffer.size >= max
-          @recv_buffer.shift(max)
-        else
-          batch = @recv_buffer
-          @recv_buffer = nil
-          remaining = max - batch.size
-          more = Reactor.run { @engine.dequeue_recv_batch(remaining) } rescue nil
-          batch.concat(more) if more
-          batch
-        end
-      else
-        Reactor.run { with_timeout(@options.read_timeout) { @engine.dequeue_recv_batch(max) } }
-      end
+      Reactor.run { with_timeout(@options.read_timeout) { @engine.dequeue_recv_batch(max) } }
     end
 
     # Waits until the socket is readable.
@@ -61,6 +38,15 @@ module OMQ
     #
     def wait_readable(timeout = @options.read_timeout)
       true
+    end
+
+    private
+
+    def fill_recv_buffer
+      batch = Reactor.run { with_timeout(@options.read_timeout) { @engine.dequeue_recv_batch(RECV_BATCH_SIZE) } }
+      msg = batch.shift
+      @recv_buffer.concat(batch) unless batch.empty?
+      msg
     end
   end
 end

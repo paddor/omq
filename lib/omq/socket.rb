@@ -231,7 +231,8 @@ module OMQ
       @options.send_timeout   = send_timeout if send_timeout
       @options.recv_timeout   = recv_timeout if recv_timeout
       @options.conflate       = conflate
-      @engine  = Engine.new(socket_type, @options)
+      @recv_buffer = []
+      @engine      = Engine.new(socket_type, @options)
     end
   end
 end
