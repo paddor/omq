@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.10.0 — 2026-04-01
+
 ### Added
 
 - **Auto-close sockets via Async task tree** — all engine tasks (accept
@@ -15,27 +17,34 @@
   send, receive, close) are dispatched to it transparently via
   `Reactor.run`. The IO thread shuts down cleanly at process exit,
   respecting the longest linger across all sockets.
-
-### Fixed
-
-- **Reapers no longer crash on inproc DirectPipe** — PUSH and SCATTER
-  reapers skipped for DirectPipe connections that have no receive queue
-  (latent bug previously masked by transient task error swallowing).
+- **Recv prefetching** — `#receive` internally drains up to 64 messages
+  per queue dequeue, buffering the excess behind a Mutex. Subsequent
+  calls return from the buffer without touching the queue. Thread-safe
+  on JRuby. TCP 64B pipelined: 30k → 221k msg/s (7x).
 
 ### Changed
 
 - **Transports are pure IO** — TCP and IPC transports no longer spawn
   tasks. They create server sockets and return them; Engine owns the
   accept loops.
-- **Reactor simplified** — `spawn_pump` and `PumpHandle` removed (dead
-  code). Reactor exposes `root_task` (shared IO thread's root Async
-  task) and `run` (cross-thread dispatch). `stop!` respects max linger.
+- **Reactor simplified** — `spawn_pump` and `PumpHandle` removed.
+  Reactor exposes `root_task` (shared IO thread's root Async task)
+  and `run` (cross-thread dispatch). `stop!` respects max linger.
+- **Flatten `OMQ::ZMTP` namespace into `OMQ`** — with the ZMTP protocol
+  layer extracted to `protocol-zmtp`, the `ZMTP` sub-namespace no longer
+  makes sense. Engine, routing, transport, and mixins now live directly
+  under `OMQ::`. Protocol-zmtp types are referenced as `Protocol::ZMTP::*`.
 
 ### Performance
 
-- **Uncapped send queue drain** — the send pump now drains the entire
-  queue per cycle instead of capping at 64 messages. IO::Stream
-  auto-flushes at 64 KB, so writes hit the wire naturally under load.
+- **Direct pipe bypass for single-peer inproc** — PAIR, CHANNEL, and
+  single-peer RoundRobin types (PUSH, REQ, DEALER, CLIENT, SCATTER)
+  enqueue directly into the receiver's recv queue, skipping the
+  send_queue and send pump entirely.
+  Inproc PUSH/PULL: 200k → 980k msg/s (5x).
+- **Uncapped send queue drain** — the send pump drains the entire queue
+  per cycle instead of capping at 64 messages. IO::Stream auto-flushes
+  at 64 KB, so writes hit the wire naturally under load.
   IPC latency −12%, TCP latency −10%.
 - **Remove `.b` allocations from PUB/SUB subscription matching** —
   `FanOut#subscribed?` no longer creates temporary binary strings per
@@ -49,18 +58,14 @@
   already a frozen binary string.
 - **Pre-frozen empty frame constants** for REQ/REP delimiter frames.
 
-### Changed
-
-- **Flatten `OMQ::ZMTP` namespace into `OMQ`** — with the ZMTP protocol
-  layer extracted to `protocol-zmtp`, the `ZMTP` sub-namespace no longer
-  makes sense. Engine, routing, transport, and mixins now live directly
-  under `OMQ::`. Protocol-zmtp types are referenced as `Protocol::ZMTP::*`.
-
 ### Fixed
 
-- **Remove redundant `respond_to?` guard in `drain_send_queues`** —
-  every routing strategy that exposes `send_queue` also implements
-  `send_pump_idle?`, so the second check was unnecessary.
+- **Reapers no longer crash on inproc DirectPipe** — PUSH and SCATTER
+  reapers skipped for DirectPipe connections that have no receive queue
+  (latent bug previously masked by transient task error swallowing).
+- **`send_pump_idle?` made public** on all routing strategies — was
+  accidentally private, crashing `Engine#drain_send_queues` with
+  linger > 0.
 
 ## 0.9.0 — 2026-03-31
 

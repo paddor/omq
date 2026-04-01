@@ -18,17 +18,7 @@ module OMQ
     # @raise [IO::TimeoutError] if read_timeout exceeded
     #
     def receive
-      @recv_buffer.shift || fill_recv_buffer
-    end
-
-    # Receives up to +max+ messages. Blocks until at least one is
-    # available, then drains the recv queue without blocking.
-    #
-    # @param max [Integer] maximum messages to return
-    # @return [Array<Array<String>>] array of messages
-    #
-    def receive_messages(max)
-      Reactor.run { with_timeout(@options.read_timeout) { @engine.dequeue_recv_batch(max) } }
+      @recv_mutex.synchronize { @recv_buffer.shift } || fill_recv_buffer
     end
 
     # Waits until the socket is readable.
@@ -45,7 +35,7 @@ module OMQ
     def fill_recv_buffer
       batch = Reactor.run { with_timeout(@options.read_timeout) { @engine.dequeue_recv_batch(RECV_BATCH_SIZE) } }
       msg = batch.shift
-      @recv_buffer.concat(batch) unless batch.empty?
+      @recv_mutex.synchronize { @recv_buffer.concat(batch) } unless batch.empty?
       msg
     end
   end

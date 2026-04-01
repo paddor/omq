@@ -2,7 +2,7 @@
 
 Measured with `benchmark-ips` on Linux x86_64, Ruby 4.0.2 +YJIT (epoll).
 
-## Throughput (push/pull, msg/s)
+## Throughput (PUSH/PULL, msg/s)
 
 ```
 ┌──────┐       ┌──────┐
@@ -10,14 +10,25 @@ Measured with `benchmark-ips` on Linux x86_64, Ruby 4.0.2 +YJIT (epoll).
 └──────┘       └──────┘
 ```
 
+### 1 peer (inproc uses direct pipe bypass)
+
 | Message size | inproc | ipc | tcp |
 |---|---|---|---|
-| 64 B | 234k | 49k | 36k |
-| 256 B | 229k | 45k | 34k |
-| 1024 B | 226k | 43k | 34k |
-| 4096 B | 233k | 38k | 32k |
+| 64 B | 980k | 38k | 31k |
+| 256 B | 775k | 34k | 29k |
+| 1024 B | 908k | 30k | 30k |
+| 4096 B | 814k | 26k | 27k |
 
-## Latency (req/rep roundtrip)
+### 3 peers (round-robin via send pump)
+
+| Message size | inproc | ipc | tcp |
+|---|---|---|---|
+| 64 B | 160k | 38k | 31k |
+| 256 B | 165k | 39k | 29k |
+| 1024 B | 193k | 36k | 29k |
+| 4096 B | 165k | 29k | 25k |
+
+## Latency (REQ/REP roundtrip)
 
 ```
 ┌─────┐  req   ┌─────┐
@@ -28,50 +39,30 @@ Measured with `benchmark-ips` on Linux x86_64, Ruby 4.0.2 +YJIT (epoll).
 
 | | inproc | ipc | tcp |
 |---|---|---|---|
-| roundtrip | 12 µs | 51 µs | 62 µs |
+| 1 peer | 10.5 µs | 71.0 µs | 82.4 µs |
+| 3 peers | 10.0 µs | 62.5 µs | 76.4 µs |
 
-## REQ/REP throughput (64 B)
+## Pipeline throughput (sustained MB/s)
 
-| inproc | ipc | tcp |
-|---|---|---|
-| 88k | 19k | 15k |
+100k messages, sender ahead of receiver (recv prefetch active).
 
-## Broker (ROUTER-DEALER, inproc, 4 workers)
+### 1 peer
 
-| | roundtrip/s |
-|---|---|
-| broker | 43k |
+| Message size | inproc | ipc | tcp |
+|---|---|---|---|
+| 64 B | 49 MB/s | 13 MB/s | 15 MB/s |
+| 1 KB | 927 MB/s | 141 MB/s | 148 MB/s |
+| 4 KB | 4.7 GB/s | 371 MB/s | 389 MB/s |
+| 64 KB | 76 GB/s | 838 MB/s | 885 MB/s |
 
-## io_uring
+### 3 peers
 
-With `liburing-dev` installed, io-event uses io_uring instead of epoll.
-Inproc throughput jumps significantly. IPC and TCP are within variance.
-
-```sh
-# Debian/Ubuntu
-sudo apt install liburing-dev
-gem pristine io-event
-```
-
-## Burst throughput (push/pull and pub/sub, msg/s)
-
-Under burst load (1000-message bursts), the send pump batches writes
-before flushing — reducing syscalls from `N_msgs × N_conns` to `N_conns`
-per cycle.
-
-### PUSH/PULL
-
-| Transport | msg/s |
-|-----------|-------|
-| ipc | 239k |
-| tcp | 223k |
-
-### PUB/SUB fan-out
-
-| Transport | 1 sub | 5 subs | 10 subs |
-|-----------|-------|--------|---------|
-| ipc | 209k | 49k | 25k |
-| tcp | 210k | 47k | 19k |
+| Message size | inproc | ipc | tcp |
+|---|---|---|---|
+| 64 B | 66 MB/s | 13 MB/s | 15 MB/s |
+| 1 KB | 960 MB/s | 142 MB/s | 136 MB/s |
+| 4 KB | 4.9 GB/s | 379 MB/s | 392 MB/s |
+| 64 KB | 77 GB/s | 921 MB/s | 921 MB/s |
 
 ## Pipeline (CLI fib benchmark)
 
@@ -98,14 +89,29 @@ per cycle.
 
 Ractors overtake multi-process when per-message CPU work dominates IPC overhead.
 
+## io_uring
+
+With `liburing-dev` installed, io-event uses io_uring instead of epoll.
+Inproc throughput jumps significantly. IPC and TCP are within variance.
+
+```sh
+# Debian/Ubuntu
+sudo apt install liburing-dev
+gem pristine io-event
+```
+
 ## Running
 
 ```sh
+# All benchmarks sequentially
+RUBYOPT="--yjit" bench/run_all.sh
+
+# Individual benchmarks
 ruby --yjit bench/throughput.rb
 ruby --yjit bench/latency.rb
-ruby --yjit bench/reqrep_throughput/bench.rb
-ruby --yjit bench/broker/bench.rb
-ruby --yjit bench/flush_batching/bench.rb
+ruby --yjit bench/pipeline_mbps.rb
+
+# CLI fib pipeline
 sh bench/cli/fib_pipeline/pipeline.sh 1000000 20
 sh bench/cli/fib_pipeline/pipeline_ractors.sh 1000000 20 4
 ```
