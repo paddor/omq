@@ -26,6 +26,7 @@ module OMQ
         @send_queue           = Async::LimitedQueue.new(engine.options.send_hwm)
         @send_pump_started    = false
         @send_pump_idle       = true
+        @direct_pipe          = nil
         @written              = Set.new
       end
 
@@ -36,6 +37,31 @@ module OMQ
       def signal_connection_available
         unless @connection_available.resolved?
           @connection_available.resolve(true)
+        end
+      end
+
+
+      # Updates the direct-pipe shortcut for inproc single-peer bypass.
+      # Call from connection_added after @connections is updated.
+      #
+      def update_direct_pipe
+        if @connections.size == 1 && @connections.first.is_a?(Transport::Inproc::DirectPipe)
+          @direct_pipe = @connections.first
+        else
+          @direct_pipe = nil
+        end
+      end
+
+
+      # Enqueues directly to the inproc peer's recv queue if possible,
+      # otherwise falls back to the send queue for the send pump.
+      #
+      def enqueue_round_robin(parts)
+        pipe = @direct_pipe
+        if pipe&.direct_recv_queue
+          pipe.send_message(transform_send(parts))
+        else
+          @send_queue.enqueue(parts)
         end
       end
 

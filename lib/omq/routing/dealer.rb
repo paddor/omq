@@ -27,6 +27,7 @@ module OMQ
       def connection_added(connection)
         @connections << connection
         signal_connection_available
+        update_direct_pipe
         task = @engine.start_recv_pump(connection, @recv_queue)
         @tasks << task if task
         start_send_pump unless @send_pump_started
@@ -36,12 +37,13 @@ module OMQ
       #
       def connection_removed(connection)
         @connections.delete(connection)
+        update_direct_pipe
       end
 
       # @param parts [Array<String>]
       #
       def enqueue(parts)
-        @send_queue.enqueue(parts)
+        enqueue_round_robin(parts)
       end
 
       #

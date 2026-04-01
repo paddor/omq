@@ -33,6 +33,7 @@ module OMQ
       def connection_added(connection)
         @connections << connection
         signal_connection_available
+        update_direct_pipe
         start_send_pump unless @send_pump_started
         start_reaper(connection)
       end
@@ -42,13 +43,14 @@ module OMQ
       #
       def connection_removed(connection)
         @connections.delete(connection)
+        update_direct_pipe
       end
 
 
       # @param parts [Array<String>]
       #
       def enqueue(parts)
-        @send_queue.enqueue(parts)
+        enqueue_round_robin(parts)
       end
 
 
