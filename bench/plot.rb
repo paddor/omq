@@ -25,12 +25,12 @@ module OMQ
             text << render_plot(results, peers, sizes, transports: transports,
                                 metric:   :msgs_s,
                                 title:    "msgs/s  #{group_name}  (#{label})",
-                                ylabel:   "msgs/s",
+                                ylabel:   "log msgs/s",
                                 y_format: method(:format_si))
             text << render_plot(results, peers, sizes, transports: transports,
                                 metric:   :mbps,
                                 title:    "throughput  #{group_name}  (#{label})",
-                                ylabel:   "",
+                                ylabel:   "log",
                                 y_format: method(:format_mbps))
           end
         end
@@ -57,7 +57,8 @@ module OMQ
           points = results.dig(transport, peers)
           next unless points&.any?
 
-          log_ys = points.map { |r| Math.log10(r[metric]) }
+          raw_ys = points.map { |r| r[metric] }
+          log_ys = raw_ys.map { |v| Math.log10(v) }
 
           if plot.nil?
             plot = UnicodePlot.lineplot(x, log_ys,
@@ -71,7 +72,9 @@ module OMQ
             UnicodePlot.lineplot!(plot, x, log_ys)
           end
 
-          series << { name: transport, last_log_y: log_ys.last, bullet: LABEL_BULLETS[i] || "▪" }
+          series << { name: transport, min: raw_ys.min, max: raw_ys.max,
+                      max_log_y: log_ys.max, last_log_y: log_ys.last,
+                      bullet: LABEL_BULLETS[i] || "▪" }
         end
 
         return +"" unless plot
@@ -84,21 +87,22 @@ module OMQ
           plot.annotate_row!(:l, row, y_format.(10**decade))
         end
 
-        # Label each series at its endpoint row with a distinct marker.
-        # Nudge labels apart when lines end at the same row.
+        # Label each series at its peak row with min/max values.
+        # Nudge labels apart when lines peak at the same row.
         used_rows = {}
         series.each do |s|
-          fraction = (s[:last_log_y] - log_min) / (log_max - log_min)
+          fraction = (s[:max_log_y] - log_min) / (log_max - log_min)
           row      = n_rows - 1 - (fraction * (n_rows - 1)).round
           row      = row.clamp(0, n_rows - 1)
           row -= 1 while row >= 0 && used_rows[row]
           row = row.clamp(0, n_rows - 1)
           used_rows[row] = true
-          plot.annotate_row!(:r, row, "#{s[:bullet]} #{s[:name]}")
+          plot.annotate_row!(:r, row, "#{s[:bullet]} #{s[:name]} min=#{y_format.(s[:min])} max=#{y_format.(s[:max])}")
         end
 
-        plot.annotate!(:bl, "")
-        plot.annotate!(:br, "")
+        # X axis: message size range
+        plot.annotate!(:bl, format_size(sizes.first))
+        plot.annotate!(:br, format_size(sizes.last))
 
         puts
         plot.render($stdout)

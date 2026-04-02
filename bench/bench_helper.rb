@@ -17,15 +17,23 @@ require 'console'
 Console.logger = Console::Logger.new(Console::Output::Null.new)
 
 module BenchHelper
-  N     = 100_000
-  SIZES = [64, 256, 1024, 4096, 65_536]
+  # Message count per size, tuned so each benchmark finishes in ~10s.
+  RUNS = {
+    64     => 125_000,
+    256    => 100_000,
+    1024   =>  75_000,
+    4096   =>  50_000,
+    65_536 =>   8_000,
+  }.freeze
+  SIZES = RUNS.keys.freeze
 
   module_function
 
+  KERNEL = `uname -r`.strip.freeze
+
   def run(label, dir:, peer_counts: [1, 3], &block)
     jit = defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled? ? "+YJIT" : "no JIT"
-    puts "#{label} | OMQ #{OMQ::VERSION} | Ruby #{RUBY_VERSION} (#{jit})"
-    puts "#{N} messages per run"
+    puts "#{label} | OMQ #{OMQ::VERSION} | Ruby #{RUBY_VERSION} (#{jit}) | #{KERNEL}"
     puts
 
     results = Hash.new { |h, k| h[k] = Hash.new { |h2, k2| h2[k2] = [] } }
@@ -35,11 +43,12 @@ module BenchHelper
       peer_counts.each do |peers|
         puts "--- #{transport} (#{peers} peer#{'s' if peers > 1}) ---"
         SIZES.each do |size|
+          n   = RUNS[size]
           seq += 1
           Async do
             OMQ::Transport::Inproc.reset! if transport == "inproc"
             ep = endpoint(transport, seq)
-            r  = block.call(transport, ep, peers, "x" * size, N)
+            r  = block.call(transport, ep, peers, "x" * size, n)
             results[transport][peers] << { size: size, **r }
           end
         end
@@ -105,7 +114,7 @@ module BenchHelper
   def write_readme(dir, label, plot_text)
     jit     = defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled? ? "+YJIT" : "no JIT"
     readme  = "# #{label}\n\n"
-    readme << "OMQ #{OMQ::VERSION} | Ruby #{RUBY_VERSION} (#{jit}) | #{Time.now.strftime('%Y-%m-%d')}\n\n"
+    readme << "OMQ #{OMQ::VERSION} | Ruby #{RUBY_VERSION} (#{jit}) | #{KERNEL} | #{Time.now.strftime('%Y-%m-%d')}\n\n"
     readme << "```\n#{plot_text}```\n"
 
     path = File.join(dir, 'README.md')
