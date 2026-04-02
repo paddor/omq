@@ -125,7 +125,7 @@ The send pump reduces syscalls by batching:
 
 ```
 1. Blocking dequeue (wait for first message)
-2. Non-blocking drain up to 64 more messages
+2. Non-blocking drain of all remaining queued messages
 3. Write batch to connections (buffered, no flush)
 4. Flush each connection once
 ```
@@ -134,9 +134,25 @@ Under light load, batch size is 1 -- no overhead. Under burst load (producer
 faster than consumer), the batch grows and flushes are amortized:
 `N_msgs * N_conns` syscalls become `N_conns` per cycle.
 
+io-stream auto-flushes its write buffer at 64 KB, so large batches hit the
+wire naturally during the write loop. The explicit flush at the end only
+pushes the remainder that didn't fill a buffer.
+
 For fan-out (PUB/RADIO), one published message is written to all matching
 subscribers before flushing -- so N subscribers see 1 flush each, not N
 flushes per message.
+
+## Recv pump fairness
+
+Each connection gets its own recv pump fiber that reads messages and
+enqueues them into the routing strategy's shared recv queue. Without
+bounds, a fast connection could spin its pump indefinitely (io-stream
+buffer always has data, recv queue never full), starving slower peers.
+
+The recv pump yields to the fiber scheduler after reading 64 messages or
+1 MB from one connection, whichever comes first. This guarantees other
+connections' pumps get a turn, regardless of message size or producer
+speed. Per-connection message ordering is preserved.
 
 ## Transports
 
