@@ -32,7 +32,7 @@ puts
 
 case ARGV[0]
 when "fork"
-  require_relative "../../lib/omq"
+  require_relative "../../../lib/omq"
   require "async"
   require "console"
   Console.logger = Console::Logger.new(Console::Output::Null.new)

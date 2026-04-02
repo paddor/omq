@@ -2,12 +2,33 @@
 
 ## Unreleased
 
+### Added
+
+- **Per-pattern benchmark suite** — `bench/{push_pull,req_rep,router_dealer,dealer_dealer,pub_sub,pair}/omq.rb`
+  with shared helpers (`bench_helper.rb`) and UnicodePlot braille line
+  charts (`plot.rb`). Each benchmark measures throughput (msg/s) and
+  bandwidth (MB/s) across transports (inproc, ipc, tcp), message sizes
+  (64 B–64 KB), and peer counts (1, 3). Plots are written to per-directory
+  `README.md` files for easy diffing across versions.
+
 ### Changed
 
 - **SUB/XSUB `prefix:` kwarg renamed to `subscribe:`** — aligns with
   ZeroMQ conventions. `subscribe: nil` (no subscription) remains the
   default; pass `subscribe: ''` to subscribe to everything, or
   `subscribe: 'topic.'` for a prefix filter.
+- **Scenario benchmarks moved to `bench/scenarios/`** — broker,
+  draft_types, flush_batching, hwm_backpressure, large_messages,
+  multiframe, pubsub_fanout, ractors_vs_async, ractors_vs_fork,
+  reconnect_storm, and reqrep_throughput moved from `bench/` top level.
+
+### Removed
+
+- **Old flat benchmarks** — `bench/throughput.rb`, `bench/latency.rb`,
+  `bench/pipeline_mbps.rb`, `bench/run_all.sh` replaced by per-pattern
+  benchmarks.
+- **`bench/cli/`** — CLI-specific benchmarks (fib pipeline, latency,
+  throughput shell scripts) moved to the omq-cli repository.
 
 ## 0.10.0 — 2026-04-01
 

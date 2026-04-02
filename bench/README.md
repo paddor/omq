@@ -64,30 +64,10 @@ Measured with `benchmark-ips` on Linux x86_64, Ruby 4.0.2 +YJIT (epoll).
 | 4 KB | 4.9 GB/s | 379 MB/s | 392 MB/s |
 | 64 KB | 77 GB/s | 921 MB/s | 921 MB/s |
 
-## Pipeline (CLI fib benchmark)
+### Plots
 
-```
-+----------+     +--------+     +------+
-| producer |-IPC-| worker |-IPC-| sink |
-| PUSH     |     | pipe×4 |     | PULL |
-+----------+     +--------+     +------+
-```
+See per-directory READMEs: [`push_pull/`](push_pull/), [`req_rep/`](req_rep/), [`router_dealer/`](router_dealer/), [`dealer_dealer/`](dealer_dealer/), [`pub_sub/`](pub_sub/), [`pair/`](pair/).
 
-### Light work: 1M messages, fib(1..20)
-
-| Mode | msg/s | Time |
-|------|------:|-----:|
-| Multi-process (4 pipes) | 50,471 | 19.8s |
-| Ractors (-P 4)          |  9,635 | 103.8s |
-
-### Heavy work: 10k messages, fib(1..29)
-
-| Mode | msg/s | Time |
-|------|------:|-----:|
-| Multi-process (4 pipes) | 1,418 | 7.1s |
-| Ractors (-P 4)          | 1,739 | 5.7s |
-
-Ractors overtake multi-process when per-message CPU work dominates IPC overhead.
 
 ## io_uring
 
@@ -103,15 +83,8 @@ gem pristine io-event
 ## Running
 
 ```sh
-# All benchmarks sequentially
-RUBYOPT="--yjit" bench/run_all.sh
-
-# Individual benchmarks
-ruby --yjit bench/throughput.rb
-ruby --yjit bench/latency.rb
-ruby --yjit bench/pipeline_mbps.rb
-
-# CLI fib pipeline
-sh bench/cli/fib_pipeline/pipeline.sh 1000000 20
-sh bench/cli/fib_pipeline/pipeline_ractors.sh 1000000 20 4
+# Per-pattern benchmarks (writes plots to <dir>/README.md)
+for d in push_pull req_rep router_dealer dealer_dealer pub_sub pair; do
+  ruby --yjit bench/$d/omq.rb
+done
 ```

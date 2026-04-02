@@ -4,7 +4,7 @@
 
 $VERBOSE = nil
 
-require_relative "../../lib/omq"
+require_relative "../../../lib/omq"
 require "async"
 require "benchmark/ips"
 require "console"
