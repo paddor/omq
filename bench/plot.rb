@@ -41,24 +41,25 @@ module OMQ
       def render_plot(results, peers, sizes, transports:, metric:, title:, ylabel:, y_format:)
         x = sizes.map { |s| Math.log2(s) }
 
-        plot       = nil
-        y_min      = Float::INFINITY
-        y_max      = -Float::INFINITY
-        series     = [] # [{name:, last_log_y:, marker:}, ...]
+        # Compute Y range from all transports before creating the plot.
+        all_ys = transports.flat_map { |t| results.dig(t, peers)&.map { |r| r[metric] } || [] }
+        return +"" if all_ys.empty?
+
+        y_min   = all_ys.min
+        y_max   = all_ys.max
+        log_min = Math.log10(y_min).floor
+        log_max = Math.log10(y_max).ceil
+
+        plot   = nil
+        series = [] # [{name:, last_log_y:, marker:}, ...]
 
         transports.each_with_index do |transport, i|
           points = results.dig(transport, peers)
           next unless points&.any?
 
-          raw_ys = points.map { |r| r[metric] }
-          y_min  = [y_min, raw_ys.min].min
-          y_max  = [y_max, raw_ys.max].max
-          log_ys = raw_ys.map { |v| Math.log10(v) }
+          log_ys = points.map { |r| Math.log10(r[metric]) }
 
           if plot.nil?
-            log_min = Math.log10(y_min).floor
-            log_max = Math.log10(y_max).ceil
-
             plot = UnicodePlot.lineplot(x, log_ys,
                                         title:  title,
                                         xlabel: size_axis(sizes),
@@ -74,9 +75,6 @@ module OMQ
         end
 
         return +"" unless plot
-
-        log_min = Math.log10(y_min).floor
-        log_max = Math.log10(y_max).ceil
         n_rows  = plot.n_rows
 
         # Label each decade on the Y axis
