@@ -125,6 +125,26 @@ pull.close
 
 The IO thread runs all pumps, reconnection, and heartbeating in the background. When you're inside an `Async` block, OMQ uses the existing reactor instead.
 
+### Queue Interface
+
+All sockets expose an `Async::Queue`-inspired interface:
+
+| Async::Queue | OMQ Socket | Notes |
+|---|---|---|
+| `enqueue(item)` / `push(item)` | `enqueue(msg)` / `push(msg)` | Also: `send(msg)`, `<< msg` |
+| `dequeue(timeout:)` / `pop(timeout:)` | `dequeue(timeout:)` / `pop(timeout:)` | Defaults to socket's `read_timeout` |
+| `wait` | `wait` | Blocks indefinitely (ignores `read_timeout`) |
+| `each` | `each` | Yields messages; returns on close or timeout |
+
+```ruby
+pull = OMQ::PULL.bind('inproc://work')
+
+# iterate messages like a queue
+pull.each do |msg|
+  puts msg.first
+end
+```
+
 ## Socket Types
 
 All sockets are thread-safe. Default HWM is 1000 messages per socket. Classes live under `OMQ::` (alias: `ØMQ`).

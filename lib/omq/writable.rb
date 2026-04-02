@@ -6,6 +6,7 @@ module OMQ
   # Pure Ruby Writable mixin. Enqueues messages to the engine's send path.
   #
   module Writable
+    include QueueWritable
     # Sends a message.
     #
     # @param message [String, Array<String>] message parts

@@ -4,6 +4,10 @@
 
 ### Added
 
+- **Queue-style interface** — readable sockets gain `#dequeue(timeout:)`,
+  `#pop`, `#wait`, and `#each`; writable sockets gain `#enqueue` and
+  `#push`. Inspired by `Async::Queue`. `#wait` blocks indefinitely
+  (ignores `read_timeout`); `#each` returns gracefully on timeout.
 - **Per-pattern benchmark suite** — `bench/{push_pull,req_rep,router_dealer,dealer_dealer,pub_sub,pair}/omq.rb`
   with shared helpers (`bench_helper.rb`) and UnicodePlot braille line
   charts (`plot.rb`). Each benchmark measures throughput (msg/s) and

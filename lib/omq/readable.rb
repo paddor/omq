@@ -6,6 +6,8 @@ module OMQ
   # Pure Ruby Readable mixin. Dequeues messages from the engine's recv queue.
   #
   module Readable
+    include QueueReadable
+
     # Maximum messages to prefetch from the recv queue per drain.
     RECV_BATCH_SIZE = 64
 

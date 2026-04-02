@@ -71,6 +71,7 @@ require_relative "omq/routing/dish"
 require_relative "omq/routing/peer"
 require_relative "omq/single_frame"
 require_relative "omq/engine"
+require_relative "omq/queue_interface"
 require_relative "omq/readable"
 require_relative "omq/writable"
 
