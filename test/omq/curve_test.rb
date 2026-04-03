@@ -130,8 +130,8 @@ describe "CURVE encryption (socket-level)" do
 
         req = OMQ::REQ.new
         req.mechanism = curve_client(client_pub, client_sec, server_key: server_pub)
-        req.recv_timeout = 1
-        req.send_timeout = 1
+        req.recv_timeout = 0.1
+        req.send_timeout = 0.1
         req.connect("tcp://127.0.0.1:#{port}")
 
         req << "should fail"
@@ -187,8 +187,8 @@ describe "CURVE encryption (socket-level)" do
 
         req = OMQ::REQ.new
         req.mechanism = curve_client(client_pub, client_sec, server_key: server_pub)
-        req.recv_timeout = 1
-        req.send_timeout = 1
+        req.recv_timeout = 0.1
+        req.send_timeout = 0.1
         req.connect("tcp://127.0.0.1:#{port}")
 
         req << "should fail"
