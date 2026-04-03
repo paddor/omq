@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../../../test_helper"
+require_relative "../../test_helper"
 require "tmpdir"
 
 describe "IPC transport" do
