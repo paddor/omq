@@ -9,6 +9,17 @@ module OMQ
   # OMQ::Socket instance. Each socket type creates one Engine.
   #
   class Engine
+    # Scheme → transport module registry.
+    # Plugins add entries via +Engine.transports["scheme"] = MyTransport+.
+    #
+    @transports = {}
+
+    class << self
+      # @return [Hash{String => Module}] registered transports
+      attr_reader :transports
+    end
+
+
     # @return [Symbol] socket type (e.g. :REQ, :PAIR)
     #
     attr_reader :socket_type
@@ -93,12 +104,13 @@ module OMQ
     # @raise [ArgumentError] on unsupported transport
     #
     def bind(endpoint)
+      freeze_error_lists!
       transport = transport_for(endpoint)
       listener  = transport.bind(endpoint, self)
       start_accept_loops(listener)
       @listeners << listener
       @last_endpoint = listener.endpoint
-      @last_tcp_port = extract_tcp_port(listener.endpoint)
+      @last_tcp_port = listener.respond_to?(:port) ? listener.port : nil
       emit_monitor_event(:listening, endpoint: listener.endpoint)
     rescue => error
       emit_monitor_event(:bind_failed, endpoint: endpoint, detail: { error: error })
@@ -112,6 +124,7 @@ module OMQ
     # @return [void]
     #
     def connect(endpoint)
+      freeze_error_lists!
       validate_endpoint!(endpoint)
       @connected_endpoints << endpoint
       if endpoint.start_with?("inproc://")
@@ -616,103 +629,36 @@ module OMQ
     # resolution failures during reconnect are retried with backoff.
     #
     def validate_endpoint!(endpoint)
-      case endpoint
-      when /\Atcp:\/\//
-        host = URI.parse(endpoint.sub("tcp://", "http://")).hostname
-      when /\Atls\+tcp:\/\//
-        host = URI.parse("http://#{endpoint.delete_prefix("tls+tcp://")}").hostname
-      else
-        return
-      end
-      Addrinfo.getaddrinfo(host, nil, nil, :STREAM) if host
+      transport = transport_for(endpoint)
+      transport.validate_endpoint!(endpoint) if transport.respond_to?(:validate_endpoint!)
     end
 
 
     def transport_for(endpoint)
-      case endpoint
-      when /\Atls\+tcp:\/\// then Transport::TLS
-      when /\Atcp:\/\//      then Transport::TCP
-      when /\Aipc:\/\//      then Transport::IPC
-      when /\Ainproc:\/\//   then Transport::Inproc
-      else raise ArgumentError, "unsupported transport: #{endpoint}"
-      end
+      scheme = endpoint[/\A([^:]+):\/\//, 1]
+      self.class.transports[scheme] or
+        raise ArgumentError, "unsupported transport: #{endpoint}"
     end
 
 
-    def extract_tcp_port(endpoint)
-      return nil unless endpoint&.start_with?("tcp://") || endpoint&.start_with?("tls+tcp://")
-      port = endpoint.split(":").last.to_i
-      port.positive? ? port : nil
-    end
-
-
-    # Spawns accept loops for a listener under @parent_task.
+    # Delegates accept loop startup to the listener.
     #
-    # TCP listeners have multiple server sockets (IPv4/IPv6);
-    # IPC listeners have one. Inproc listeners have none.
+    # Stream-based listeners (TCP, IPC, TLS, …) implement
+    # +#start_accept_loops+. Inproc listeners do not — connections
+    # are established synchronously during +connect+.
     #
     def start_accept_loops(listener)
-      case listener
-      when Transport::TLS::Listener
-        tasks = listener.servers.map do |server|
-          @parent_task.async(transient: true, annotation: "tls accept #{listener.endpoint}") do
-            loop do
-              client = server.accept
-              Async::Task.current.defer_stop do
-                ssl            = OpenSSL::SSL::SSLSocket.new(client, listener.ssl_context)
-                ssl.sync_close = true
-                ssl.accept
-                handle_accepted(IO::Stream::Buffered.wrap(ssl), endpoint: listener.endpoint)
-              rescue OpenSSL::SSL::SSLError => error
-                # Bad certificate, protocol mismatch, etc. — drop this
-                # connection but keep the accept loop running.
-                emit_monitor_event(:accept_failed, endpoint: listener.endpoint, detail: { error: error })
-                ssl&.close rescue nil
-              end
-            end
-          rescue Async::Stop
-          rescue IOError
-            # server closed
-          ensure
-            server.close rescue nil
-          end
-        end
-        listener.accept_tasks = tasks
-
-      when Transport::TCP::Listener
-        tasks = listener.servers.map do |server|
-          @parent_task.async(transient: true, annotation: "tcp accept #{listener.endpoint}") do
-            loop do
-              client = server.accept
-              Async::Task.current.defer_stop do
-                handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: listener.endpoint)
-              end
-            end
-          rescue Async::Stop
-          rescue IOError
-            # server closed
-          ensure
-            server.close rescue nil
-          end
-        end
-        listener.accept_tasks = tasks
-
-      when Transport::IPC::Listener
-        task = @parent_task.async(transient: true, annotation: "ipc accept #{listener.endpoint}") do
-          loop do
-            client = listener.server.accept
-            Async::Task.current.defer_stop do
-              handle_accepted(IO::Stream::Buffered.wrap(client), endpoint: listener.endpoint)
-            end
-          end
-        rescue Async::Stop
-        rescue IOError
-          # server closed
-        ensure
-          listener.server.close rescue nil
-        end
-        listener.accept_task = task
+      return unless listener.respond_to?(:start_accept_loops)
+      listener.start_accept_loops(@parent_task) do |io|
+        handle_accepted(io, endpoint: listener.endpoint)
       end
+    end
+
+
+    def freeze_error_lists!
+      return if OMQ::CONNECTION_LOST.frozen?
+      OMQ::CONNECTION_LOST.freeze
+      OMQ::CONNECTION_FAILED.freeze
     end
 
 
@@ -728,4 +674,9 @@ module OMQ
       @monitor_queue.push(nil)
     end
   end
+
+  # Register built-in transports.
+  Engine.transports["tcp"]    = Transport::TCP
+  Engine.transports["ipc"]    = Transport::IPC
+  Engine.transports["inproc"] = Transport::Inproc
 end

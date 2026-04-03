@@ -26,7 +26,6 @@ module OMQ
       @max_message_size      = nil  # bytes, nil = unlimited
       @conflate              = false
       @mechanism             = Protocol::ZMTP::Mechanism::Null.new
-      @tls_context           = nil  # OpenSSL::SSL::SSLContext for tls+tcp://
     end
 
     attr_accessor :send_hwm,  :recv_hwm,
@@ -36,8 +35,7 @@ module OMQ
                   :reconnect_interval,
                   :heartbeat_interval,    :heartbeat_ttl,    :heartbeat_timeout,
                   :max_message_size,
-                  :mechanism,
-                  :tls_context
+                  :mechanism
 
     alias_method :router_mandatory?, :router_mandatory
     alias_method :recv_timeout,      :read_timeout

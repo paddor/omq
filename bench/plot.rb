@@ -7,7 +7,7 @@ module OMQ
     module Plot
       GROUPS = {
         "inproc"                  => %w[inproc],
-        "ipc + tcp + tls + curve" => %w[ipc tcp tls curve],
+        "ipc + tcp + curve" => %w[ipc tcp curve],
       }.freeze
 
       LABEL_BULLETS = %w[▪ ▫ ▴ ▾ ◆].freeze

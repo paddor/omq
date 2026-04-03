@@ -17,7 +17,7 @@ module OMQ
         # @return [Listener]
         #
         def bind(endpoint, engine)
-          host, port = parse_endpoint(endpoint)
+          host, port = self.parse_endpoint(endpoint)
           host = "0.0.0.0" if host == "*"
 
           addrs = Addrinfo.getaddrinfo(host, port, nil, :STREAM, nil, ::Socket::AI_PASSIVE)
@@ -43,13 +43,22 @@ module OMQ
         # @param engine [Engine]
         # @return [void]
         #
+        # Validates that the endpoint's host can be resolved.
+        #
+        # @param endpoint [String]
+        # @return [void]
+        #
+        def validate_endpoint!(endpoint)
+          host, _port = parse_endpoint(endpoint)
+          Addrinfo.getaddrinfo(host, nil, nil, :STREAM) if host
+        end
+
+
         def connect(endpoint, engine)
-          host, port = parse_endpoint(endpoint)
+          host, port = self.parse_endpoint(endpoint)
           sock = TCPSocket.new(host, port)
           engine.handle_connected(IO::Stream::Buffered.wrap(sock), endpoint: endpoint)
         end
-
-        private
 
         # Parses a TCP endpoint URI into host and port.
         #
@@ -90,12 +99,26 @@ module OMQ
         end
 
 
-        # Registers accept loop tasks owned by the engine.
+        # Spawns accept loop tasks under +parent_task+.
+        # Yields an IO::Stream-wrapped client socket for each accepted connection.
         #
-        # @param tasks [Array<Async::Task>]
+        # @param parent_task [Async::Task]
+        # @yieldparam io [IO::Stream::Buffered]
         #
-        def accept_tasks=(tasks)
-          @tasks = tasks
+        def start_accept_loops(parent_task, &on_accepted)
+          @tasks = @servers.map do |server|
+            parent_task.async(transient: true, annotation: "tcp accept #{@endpoint}") do
+              loop do
+                client = server.accept
+                Async::Task.current.defer_stop { on_accepted.call(IO::Stream::Buffered.wrap(client)) }
+              end
+            rescue Async::Stop
+            rescue IOError
+              # server closed
+            ensure
+              server.close rescue nil
+            end
+          end
         end
 
 

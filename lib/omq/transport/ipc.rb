@@ -92,12 +92,24 @@ module OMQ
         end
 
 
-        # Registers the accept loop task owned by the engine.
+        # Spawns an accept loop task under +parent_task+.
+        # Yields an IO::Stream-wrapped client socket for each accepted connection.
         #
-        # @param task [Async::Task]
+        # @param parent_task [Async::Task]
+        # @yieldparam io [IO::Stream::Buffered]
         #
-        def accept_task=(task)
-          @task = task
+        def start_accept_loops(parent_task, &on_accepted)
+          @task = parent_task.async(transient: true, annotation: "ipc accept #{@endpoint}") do
+            loop do
+              client = @server.accept
+              Async::Task.current.defer_stop { on_accepted.call(IO::Stream::Buffered.wrap(client)) }
+            end
+          rescue Async::Stop
+          rescue IOError
+            # server closed
+          ensure
+            @server.close rescue nil
+          end
         end
 
 

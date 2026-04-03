@@ -8,7 +8,6 @@
 
 require "protocol/zmtp"
 require "io/stream"
-require "openssl"
 
 require_relative "omq/version"
 require_relative "omq/monitor_event"
@@ -20,6 +19,8 @@ module OMQ
   class SocketDeadError < RuntimeError; end
 
   # Errors raised when a peer disconnects or resets the connection.
+  # Not frozen at load time — transport plugins append to this before
+  # the first bind/connect, which freezes both arrays.
   CONNECTION_LOST = [
     EOFError,
     IOError,
@@ -28,8 +29,7 @@ module OMQ
     Errno::ECONNABORTED,
     Errno::ENOTCONN,
     IO::Stream::ConnectionResetError,
-    OpenSSL::SSL::SSLError,
-  ].freeze
+  ]
 
   # Errors raised when a peer cannot be reached.
   CONNECTION_FAILED = [
@@ -39,13 +39,12 @@ module OMQ
     Errno::EHOSTUNREACH,
     Errno::ENETUNREACH,
     Socket::ResolutionError,
-  ].freeze
+  ]
 end
 
 # Transport
 require_relative "omq/transport/inproc"
 require_relative "omq/transport/tcp"
-require_relative "omq/transport/tls"
 require_relative "omq/transport/ipc"
 
 # Core

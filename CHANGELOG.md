@@ -12,6 +12,41 @@
   `:closed`, and `:monitor_stopped`. Event types align with libzmq's
   `zmq_socket_monitor` where applicable. Pattern-matchable, zero overhead
   when no monitor is attached.
+- **Pluggable transport registry** — `Engine.transports` is a scheme →
+  module hash. Built-in transports (`tcp`, `ipc`, `inproc`) are registered
+  at load time. External gems register via
+  `OMQ::Engine.transports["scheme"] = MyTransport`. Each transport
+  implements `.bind(endpoint, engine)` → Listener, `.connect(endpoint,
+  engine)`, and optionally `.validate_endpoint!(endpoint)`. Listeners
+  implement `#start_accept_loops(parent_task, &on_accepted)`, `#stop`,
+  `#endpoint`, and optionally `#port`.
+- **Mutable error lists** — `CONNECTION_LOST` and `CONNECTION_FAILED` are
+  no longer frozen at load time. Transport plugins can append error classes
+  (e.g. `OpenSSL::SSL::SSLError`) before the first `#bind`/`#connect`,
+  which freezes both arrays.
+
+### Changed
+
+- **Accept loops moved into Listeners** — `TCP::Listener` and
+  `IPC::Listener` now own their accept loop logic via
+  `#start_accept_loops(parent_task, &on_accepted)`. Engine delegates
+  via duck-type check. This enables external transports to define
+  custom accept behavior without modifying Engine.
+- `Engine#transport_for` uses registry lookup instead of `case/when`.
+- `Engine#validate_endpoint!` delegates to transport module.
+- `Engine#bind` reads `listener.port` instead of parsing the endpoint
+  string.
+
+### Removed
+
+- **TLS transport** — extracted to the
+  [omq-transport-tls](https://github.com/paddor/omq-transport-tls) gem.
+  (Experimental) `require "omq/transport/tls"` to restore `tls+tcp://` support.
+- `tls_context` / `tls_context=` removed from `Options` and `Socket`
+  (provided by omq-transport-tls).
+- `OpenSSL::SSL::SSLError` removed from `CONNECTION_LOST` (added back
+  by omq-transport-tls).
+- TLS benchmark transport removed from `bench_helper.rb` and `plot.rb`.
 
 ## 0.11.0
 

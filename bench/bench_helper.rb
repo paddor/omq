@@ -34,7 +34,7 @@ module BenchHelper
 
   KERNEL = `uname -r`.strip.freeze
 
-  TRANSPORTS = %w[inproc ipc tcp tls curve].freeze
+  TRANSPORTS = %w[inproc ipc tcp curve].freeze
 
   def run(label, dir:, peer_counts: [1, 3], &block)
     jit = defined?(RubyVM::YJIT) && RubyVM::YJIT.enabled? ? "+YJIT" : "no JIT"
@@ -71,7 +71,6 @@ module BenchHelper
     when "inproc" then "inproc://bench-#{seq}"
     when "ipc"    then "ipc://@omq-bench-#{seq}"
     when "tcp"    then "tcp://127.0.0.1:0"
-    when "tls"    then "tls+tcp://localhost:0"
     when "curve"  then "tcp://127.0.0.1:0"
     end
   end
@@ -81,32 +80,17 @@ module BenchHelper
   def resolve_endpoint(transport, socket)
     case transport
     when "tcp", "curve" then "tcp://127.0.0.1:#{socket.last_tcp_port}"
-    when "tls"          then "tls+tcp://localhost:#{socket.last_tcp_port}"
     else socket.last_endpoint
     end
   end
 
-  # Applies transport-specific security (TLS context or CURVE mechanism).
+  # Applies transport-specific security (CURVE mechanism).
   #
   def apply_security(socket, transport, role:)
     case transport
-    when "tls"
-      socket.tls_context = tls_context(role)
     when "curve"
       socket.mechanism = curve_mechanism(role)
     end
-  end
-
-  def tls_context(role)
-    @tls_contexts ||= begin
-      require "localhost"
-      authority = Localhost::Authority.fetch
-      {
-        server: authority.server_context.tap { |c| c.min_version = OpenSSL::SSL::TLS1_3_VERSION },
-        client: authority.client_context.tap { |c| c.min_version = OpenSSL::SSL::TLS1_3_VERSION },
-      }
-    end
-    @tls_contexts[role]
   end
 
   def curve_mechanism(role)

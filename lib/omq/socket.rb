@@ -36,8 +36,7 @@ module OMQ
       :heartbeat_ttl,         :heartbeat_ttl=,
       :heartbeat_timeout,     :heartbeat_timeout=,
       :max_message_size,      :max_message_size=,
-      :mechanism,             :mechanism=,
-      :tls_context,           :tls_context=
+      :mechanism,             :mechanism=
 
 
     # Creates a new socket and binds it to the given endpoint.
