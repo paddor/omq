@@ -27,7 +27,6 @@ module OMQ
       #
       def connection_added(connection)
         @connections << connection
-        # Send existing group memberships to new peer
         @groups.each do |group|
           connection.send_command(Protocol::ZMTP::Codec::Command.join(group))
         end

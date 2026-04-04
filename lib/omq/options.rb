@@ -27,6 +27,7 @@ module OMQ
       @conflate              = false
       @on_mute               = :block   # :block, :drop_newest, :drop_oldest
       @mechanism             = Protocol::ZMTP::Mechanism::Null.new
+      @qos                   = 0       # 0 = fire-and-forget, 1 = at-least-once (see omq-qos gem)
     end
 
     attr_accessor :send_hwm,  :recv_hwm,
@@ -37,7 +38,8 @@ module OMQ
                   :heartbeat_interval,    :heartbeat_ttl,    :heartbeat_timeout,
                   :max_message_size,
                   :on_mute,
-                  :mechanism
+                  :mechanism,
+                  :qos
 
     alias_method :router_mandatory?, :router_mandatory
     alias_method :recv_timeout,      :read_timeout

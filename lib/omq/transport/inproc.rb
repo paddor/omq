@@ -118,11 +118,12 @@ module OMQ
                   "incompatible socket types: #{client_type} cannot connect to #{server_type}"
           end
 
-          # Only PUB/SUB-family types exchange commands (SUBSCRIBE/CANCEL)
-          # over inproc. All other types use only the direct recv queue
-          # bypass for data, so no internal queues are needed.
+          # PUB/SUB-family types exchange commands (SUBSCRIBE/CANCEL)
+          # over inproc. QoS >= 1 needs command queues for ACK/NACK.
           needs_commands = COMMAND_TYPES.include?(client_type) ||
-                           COMMAND_TYPES.include?(server_type)
+                           COMMAND_TYPES.include?(server_type) ||
+                           client_engine.options.qos >= 1 ||
+                           server_engine.options.qos >= 1
 
           if needs_commands
             a_to_b = Async::Queue.new
@@ -301,13 +302,30 @@ module OMQ
 
         # Receives a multi-frame message.
         #
+        # When a block is given, command items ([:command, cmd]) are
+        # yielded as command frames — matching the Protocol::ZMTP::Connection
+        # interface. Without a block, commands are silently skipped if
+        # the pipe has command queues.
+        #
         # @return [Array<String>]
         # @raise [EOFError] if closed
         #
         def receive_message
-          msg = @receive_queue.dequeue
-          raise EOFError, "connection closed" if msg.nil?
-          msg
+          loop do
+            item = @receive_queue.dequeue
+            raise EOFError, "connection closed" if item.nil?
+
+            if item.is_a?(Array) && item.first == :command
+              if block_given?
+                cmd   = item[1]
+                frame = Protocol::ZMTP::Codec::Frame.new(cmd.to_body, command: true)
+                yield frame
+              end
+              next
+            end
+
+            return item
+          end
         end
 
 

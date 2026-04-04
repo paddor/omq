@@ -13,6 +13,9 @@ module OMQ
     module FanOut
       attr_reader :subscriber_joined
 
+      # @return [Boolean] true when the send pump is idle (not sending a batch)
+      def send_pump_idle? = @send_pump_idle
+
       private
 
       def init_fan_out(engine)
@@ -57,9 +60,6 @@ module OMQ
       def on_cancel(conn, prefix)
         @subscriptions[conn]&.delete(prefix)
       end
-
-      # @return [Boolean] true when the send pump is idle (not sending a batch)
-      def send_pump_idle? = @send_pump_idle
 
       # Returns true if the connection is muted (recv queue full) and
       # the on_mute strategy says to drop rather than block.

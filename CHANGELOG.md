@@ -4,6 +4,23 @@
 
 ### Added
 
+- **QoS infrastructure** — `Options#qos` attribute (default 0) and inproc
+  command queue support for QoS-enabled connections. The
+  [omq-qos](https://github.com/paddor/omq-qos) gem activates delivery
+  guarantees via prepends.
+- **REQ send/recv ordering** — REQ sockets now enforce strict
+  send/recv/send/recv alternation. Calling `#send` twice without a
+  `#receive` in between raises `SocketError`.
+- **DirectPipe command frame support** — `DirectPipe#receive_message`
+  accepts a block for command frames, matching the `Protocol::ZMTP::Connection`
+  interface. Enables inproc transports to handle ACK/NACK and other
+  command-level protocols.
+
+### Fixed
+
+- **`send_pump_idle?` visibility** — moved above `private` in `RoundRobin`
+  and `FanOut` so `Engine#drain_send_queues` can call it during socket close.
+
 - **`Socket#monitor`** — observe connection lifecycle events via a
   block-based API. Returns an `Async::Task` that yields `MonitorEvent`
   (Data.define) instances for `:listening`, `:accepted`, `:connected`,

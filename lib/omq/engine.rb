@@ -634,6 +634,7 @@ module OMQ
     end
 
 
+
     def transport_for(endpoint)
       scheme = endpoint[/\A([^:]+):\/\//, 1]
       self.class.transports[scheme] or

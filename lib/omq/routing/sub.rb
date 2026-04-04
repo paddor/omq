@@ -26,7 +26,6 @@ module OMQ
       #
       def connection_added(connection)
         @connections << connection
-        # Send existing subscriptions to new peer
         @subscriptions.each do |prefix|
           connection.send_command(Protocol::ZMTP::Codec::Command.subscribe(prefix))
         end

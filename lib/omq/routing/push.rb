@@ -76,6 +76,8 @@ module OMQ
           @engine.connection_lost(conn)
         end
       end
+
+
     end
   end
 end

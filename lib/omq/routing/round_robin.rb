@@ -12,6 +12,9 @@ module OMQ
     # their #initialize.
     #
     module RoundRobin
+      # @return [Boolean] true when the send pump is idle (not sending a batch)
+      def send_pump_idle? = @send_pump_idle
+
       private
 
 
@@ -90,13 +93,6 @@ module OMQ
       def transform_send(parts) = parts
 
 
-      # Starts the background send pump that dequeues messages
-      # and dispatches them round-robin across connections.
-      #
-      # @return [Boolean] true when the send pump is idle (not sending a batch)
-      def send_pump_idle? = @send_pump_idle
-
-
       def start_send_pump
         @send_pump_started = true
         @tasks << @engine.spawn_pump_task(annotation: "send pump") do
@@ -144,14 +140,11 @@ module OMQ
             @written << conn
           rescue *CONNECTION_LOST
             @engine.connection_lost(conn)
-            # Flush what we've written so far
             @written.each do |c|
               c.flush
             rescue *CONNECTION_LOST
-              # will be cleaned up
             end
             @written.clear
-            # Fall back to send_with_retry for this and remaining
             send_with_retry(parts)
             batch[(i + 1)..].each { |p| send_with_retry(p) }
             return
@@ -160,7 +153,6 @@ module OMQ
         @written.each do |conn|
           conn.flush
         rescue *CONNECTION_LOST
-          # will be cleaned up
         end
       end
     end
