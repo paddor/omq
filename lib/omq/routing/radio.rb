@@ -18,7 +18,8 @@ module OMQ
         @engine            = engine
         @connections       = []
         @groups            = {} # connection => Set of joined groups
-        @send_queue        = Async::LimitedQueue.new(engine.options.send_hwm)
+        @send_queue        = Routing.build_queue(engine.options.send_hwm, :block)
+        @on_mute           = engine.options.on_mute
         @send_pump_started = false
         @conflate          = engine.options.conflate
         @tasks             = []
@@ -67,6 +68,12 @@ module OMQ
 
       private
 
+      def muted?(conn)
+        return false if @on_mute == :block
+        q = conn.direct_recv_queue if conn.respond_to?(:direct_recv_queue)
+        q&.respond_to?(:limited?) && q.limited?
+      end
+
       def start_send_pump
         @send_pump_started = true
         @tasks << @engine.spawn_pump_task(annotation: "send pump") do
@@ -90,6 +97,7 @@ module OMQ
                 end
               end
               @latest.each do |conn, msg|
+                next if muted?(conn)
                 begin
                   conn.write_message(msg)
                   @written << conn
@@ -105,6 +113,7 @@ module OMQ
 
                 @connections.each do |conn|
                   next unless @groups[conn]&.include?(group)
+                  next if muted?(conn)
                   begin
                     if conn.respond_to?(:curve?) && conn.curve?
                       conn.write_message(msg)

@@ -36,6 +36,7 @@ module OMQ
       :heartbeat_ttl,         :heartbeat_ttl=,
       :heartbeat_timeout,     :heartbeat_timeout=,
       :max_message_size,      :max_message_size=,
+      :on_mute,               :on_mute=,
       :mechanism,             :mechanism=
 
 
@@ -265,13 +266,14 @@ module OMQ
     #
     def _init_engine(socket_type, linger:, send_hwm: nil, recv_hwm: nil,
                      send_timeout: nil, recv_timeout: nil, conflate: false,
-                     backend: nil)
+                     on_mute: nil, backend: nil)
       @options = Options.new(linger: linger)
       @options.send_hwm      = send_hwm     if send_hwm
       @options.recv_hwm      = recv_hwm     if recv_hwm
       @options.send_timeout   = send_timeout if send_timeout
       @options.recv_timeout   = recv_timeout if recv_timeout
       @options.conflate       = conflate
+      @options.on_mute        = on_mute      if on_mute
       @recv_buffer = []
       @recv_mutex  = Mutex.new
       @engine      = case backend

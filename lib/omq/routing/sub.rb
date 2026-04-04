@@ -13,7 +13,7 @@ module OMQ
       def initialize(engine)
         @engine        = engine
         @connections   = []
-        @recv_queue    = Async::LimitedQueue.new(engine.options.recv_hwm)
+        @recv_queue    = Routing.build_queue(engine.options.recv_hwm, engine.options.on_mute)
         @subscriptions = Set.new
         @tasks         = []
       end

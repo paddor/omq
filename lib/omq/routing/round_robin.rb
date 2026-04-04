@@ -23,7 +23,7 @@ module OMQ
         @connections          = []
         @cycle                = @connections.cycle
         @connection_available = Async::Promise.new
-        @send_queue           = Async::LimitedQueue.new(engine.options.send_hwm)
+        @send_queue           = Routing.build_queue(engine.options.send_hwm, :block)
         @send_pump_started    = false
         @send_pump_idle       = true
         @direct_pipe          = nil

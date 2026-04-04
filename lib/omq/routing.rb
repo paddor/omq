@@ -3,6 +3,7 @@
 require "async"
 require "async/queue"
 require "async/limited_queue"
+require_relative "drop_queue"
 
 module OMQ
   # Routing strategies for each ZMQ socket type.
@@ -13,6 +14,25 @@ module OMQ
   module Routing
     # Shared frozen empty binary string to avoid repeated allocations.
     EMPTY_BINARY = "".b.freeze
+
+    # Builds a send or recv queue based on the mute strategy.
+    #
+    # @param hwm [Integer] high water mark
+    # @param on_mute [Symbol] :block, :drop_newest, or :drop_oldest
+    # @return [Async::LimitedQueue, DropQueue]
+    #
+    def self.build_queue(hwm, on_mute)
+      return Async::Queue.new if hwm.nil? || hwm == 0
+
+      case on_mute
+      when :block
+        Async::LimitedQueue.new(hwm)
+      when :drop_newest, :drop_oldest
+        DropQueue.new(hwm, strategy: on_mute)
+      else
+        raise ArgumentError, "unknown on_mute strategy: #{on_mute.inspect}"
+      end
+    end
 
     # Drains all available messages from +queue+ into +batch+ without
     # blocking. Call after the initial blocking dequeue.

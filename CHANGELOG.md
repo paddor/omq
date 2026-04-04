@@ -25,6 +25,19 @@
   (e.g. `OpenSSL::SSL::SSLError`) before the first `#bind`/`#connect`,
   which freezes both arrays.
 
+- **`on_mute` option** — controls behavior when a socket enters the mute state
+  (HWM full). PUB, XPUB, and RADIO default to `on_mute: :drop_newest` — slow
+  subscribers are skipped in the fan-out rather than blocking the publisher.
+  SUB, XSUB, and DISH accept `on_mute: :drop_newest` or `:drop_oldest` to
+  drop messages on the receive side instead of applying backpressure. All other
+  socket types default to `:block` (existing behavior).
+- **`DropQueue`** — bounded queue with `:drop_newest` (tail drop) and
+  `:drop_oldest` (head drop) strategies. Used by recv queues when `on_mute`
+  is a drop strategy.
+- **`Routing.build_queue`** — factory method for building send/recv queues
+  based on HWM and mute strategy. Supports HWM of `0` or `nil` for unbounded
+  queues.
+
 ### Changed
 
 - **`max_message_size` defaults to 1 MiB** — frames exceeding this limit cause

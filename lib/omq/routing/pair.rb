@@ -14,8 +14,8 @@ module OMQ
       def initialize(engine)
         @engine     = engine
         @connection = nil
-        @recv_queue = Async::LimitedQueue.new(engine.options.recv_hwm)
-        @send_queue = Async::LimitedQueue.new(engine.options.send_hwm)
+        @recv_queue = Routing.build_queue(engine.options.recv_hwm, :block)
+        @send_queue = Routing.build_queue(engine.options.send_hwm, :block)
         @tasks          = []
         @send_pump_idle = true
       end

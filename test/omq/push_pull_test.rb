@@ -304,4 +304,44 @@ describe "PUSH/PULL delivery guarantees" do
       pull&.close
     end
   end
+
+  it "set_unbounded works (HWM=0)" do
+    Async do
+      push = OMQ::PUSH.new(nil, linger: 0)
+      push.set_unbounded
+      push.bind("inproc://pushpull-unbounded")
+
+      pull = OMQ::PULL.new(nil, linger: 0)
+      pull.set_unbounded
+      pull.connect("inproc://pushpull-unbounded")
+
+      push.send("hello")
+      msg = pull.receive
+      assert_equal ["hello"], msg
+    ensure
+      push&.close
+      pull&.close
+    end
+  end
+
+  it "unbounded via HWM=nil" do
+    Async do
+      push = OMQ::PUSH.new(nil, linger: 0)
+      push.send_hwm = nil
+      push.recv_hwm = nil
+      push.bind("inproc://pushpull-nil-hwm")
+
+      pull = OMQ::PULL.new(nil, linger: 0)
+      pull.send_hwm = nil
+      pull.recv_hwm = nil
+      pull.connect("inproc://pushpull-nil-hwm")
+
+      push.send("hello")
+      msg = pull.receive
+      assert_equal ["hello"], msg
+    ensure
+      push&.close
+      pull&.close
+    end
+  end
 end

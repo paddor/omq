@@ -13,7 +13,7 @@ module OMQ
       #
       def initialize(engine)
         @engine     = engine
-        @recv_queue = Async::LimitedQueue.new(engine.options.recv_hwm)
+        @recv_queue = Routing.build_queue(engine.options.recv_hwm, :block)
         @tasks      = []
         init_round_robin(engine)
       end

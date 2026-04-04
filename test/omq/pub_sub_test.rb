@@ -42,6 +42,116 @@ describe "PUB/SUB" do
       pub&.close
     end
   end
+
+  it "DropQueue :drop_newest drops incoming when full" do
+    queue = OMQ::DropQueue.new(3, strategy: :drop_newest)
+    3.times { |i| queue.enqueue("msg.#{i}") }
+
+    # Queue is full — enqueue must not block, must silently drop
+    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    7.times { |i| queue.enqueue("overflow.#{i}") }
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+    assert_operator elapsed, :<, 0.01
+
+    # Only the original 3 messages should be in the queue
+    drained = []
+    loop do
+      msg = queue.dequeue(timeout: 0)
+      break unless msg
+      drained << msg
+    end
+    assert_equal %w[msg.0 msg.1 msg.2], drained
+  end
+
+  it "DropQueue :drop_oldest evicts head when full" do
+    queue = OMQ::DropQueue.new(3, strategy: :drop_oldest)
+    3.times { |i| queue.enqueue("msg.#{i}") }
+
+    # Overflow — should evict oldest each time
+    queue.enqueue("new.0")
+    queue.enqueue("new.1")
+
+    drained = []
+    loop do
+      msg = queue.dequeue(timeout: 0)
+      break unless msg
+      drained << msg
+    end
+    assert_equal %w[msg.2 new.0 new.1], drained
+  end
+
+  it "does not block the publisher" do
+    Async do
+      pub = OMQ::PUB.new(nil, linger: 0)
+      pub.send_hwm = 5
+      pub.bind("inproc://pubsub-hwm")
+
+      sub = OMQ::SUB.connect("inproc://pubsub-hwm", subscribe: "")
+
+      # Flood with 200 messages — must complete without blocking
+      t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      200.times { |i| pub.send("msg.#{i}") }
+      elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+      assert_operator elapsed, :<, 1.0
+    ensure
+      sub&.close
+      pub&.close
+    end
+  end
+
+  it "PUB defaults to on_mute: :drop_newest" do
+    pub = OMQ::PUB.new(nil, linger: 0)
+    assert_equal :drop_newest, pub.on_mute
+  ensure
+    pub&.close
+  end
+
+  it "SUB defaults to on_mute: :block" do
+    sub = OMQ::SUB.new(nil, linger: 0)
+    assert_equal :block, sub.on_mute
+  ensure
+    sub&.close
+  end
+
+  it "SUB accepts on_mute: :drop_oldest" do
+    Async do
+      pub = OMQ::PUB.new(nil, linger: 0)
+      pub.send_hwm = 100
+      pub.bind("inproc://pubsub-drop-oldest")
+
+      sub = OMQ::SUB.new(nil, linger: 0, on_mute: :drop_oldest)
+      sub.recv_hwm = 3
+      sub.connect("inproc://pubsub-drop-oldest")
+      sub.subscribe("")
+
+      assert_equal :drop_oldest, sub.on_mute
+    ensure
+      sub&.close
+      pub&.close
+    end
+  end
+
+  it "set_unbounded works with PUB" do
+    Async do
+      pub = OMQ::PUB.new(nil, linger: 0)
+      pub.set_unbounded
+      pub.bind("inproc://pubsub-unbounded")
+
+      sub = OMQ::SUB.new(nil, linger: 0)
+      sub.set_unbounded
+      sub.connect("inproc://pubsub-unbounded")
+      sub.subscribe("")
+
+      Async::Task.current.yield
+
+      pub.send("hello")
+      msg = sub.receive
+      assert_equal ["hello"], msg
+    ensure
+      sub&.close
+      pub&.close
+    end
+  end
 end
 
 describe "XPUB/XSUB" do

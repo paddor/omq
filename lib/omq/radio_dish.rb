@@ -4,8 +4,8 @@ module OMQ
   class RADIO < Socket
     include Writable
 
-    def initialize(endpoints = nil, linger: 0, conflate: false, backend: nil)
-      _init_engine(:RADIO, linger: linger, conflate: conflate, backend: backend)
+    def initialize(endpoints = nil, linger: 0, on_mute: :drop_newest, conflate: false, backend: nil)
+      _init_engine(:RADIO, linger: linger, on_mute: on_mute, conflate: conflate, backend: backend)
       _attach(endpoints, default: :bind)
     end
 
@@ -47,8 +47,8 @@ module OMQ
   class DISH < Socket
     include Readable
 
-    def initialize(endpoints = nil, linger: 0, group: nil, backend: nil)
-      _init_engine(:DISH, linger: linger, backend: backend)
+    def initialize(endpoints = nil, linger: 0, group: nil, on_mute: :block, backend: nil)
+      _init_engine(:DISH, linger: linger, on_mute: on_mute, backend: backend)
       _attach(endpoints, default: :connect)
       join(group) if group
     end

@@ -18,7 +18,8 @@ module OMQ
       def init_fan_out(engine)
         @connections        = []
         @subscriptions      = {} # connection => Set of prefixes
-        @send_queue         = Async::LimitedQueue.new(engine.options.send_hwm)
+        @send_queue         = Routing.build_queue(engine.options.send_hwm, :block)
+        @on_mute            = engine.options.on_mute
         @send_pump_started  = false
         @send_pump_idle     = true
         @conflate           = engine.options.conflate
@@ -60,6 +61,15 @@ module OMQ
       # @return [Boolean] true when the send pump is idle (not sending a batch)
       def send_pump_idle? = @send_pump_idle
 
+      # Returns true if the connection is muted (recv queue full) and
+      # the on_mute strategy says to drop rather than block.
+      #
+      def muted?(conn)
+        return false if @on_mute == :block
+        q = conn.direct_recv_queue if conn.respond_to?(:direct_recv_queue)
+        q&.respond_to?(:limited?) && q.limited?
+      end
+
 
       def start_send_pump
         @send_pump_started = true
@@ -83,6 +93,7 @@ module OMQ
                 end
               end
               @latest.each do |conn, parts|
+                next if muted?(conn)
                 begin
                   conn.write_message(parts)
                   @written << conn
@@ -96,6 +107,7 @@ module OMQ
 
                 @connections.each do |conn|
                   next unless subscribed?(conn, topic)
+                  next if muted?(conn)
                   begin
                     if conn.respond_to?(:curve?) && conn.curve?
                       conn.write_message(parts)

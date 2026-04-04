@@ -25,6 +25,7 @@ module OMQ
       @heartbeat_timeout     = nil   # seconds, nil = use heartbeat_interval
       @max_message_size      = 1 << 20  # bytes (1 MiB default)
       @conflate              = false
+      @on_mute               = :block   # :block, :drop_newest, :drop_oldest
       @mechanism             = Protocol::ZMTP::Mechanism::Null.new
     end
 
@@ -35,6 +36,7 @@ module OMQ
                   :reconnect_interval,
                   :heartbeat_interval,    :heartbeat_ttl,    :heartbeat_timeout,
                   :max_message_size,
+                  :on_mute,
                   :mechanism
 
     alias_method :router_mandatory?, :router_mandatory
