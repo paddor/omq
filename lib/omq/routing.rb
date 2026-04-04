@@ -15,6 +15,23 @@ module OMQ
     # Shared frozen empty binary string to avoid repeated allocations.
     EMPTY_BINARY = "".b.freeze
 
+    # Plugin registry for socket types not built into omq.
+    # Populated by sister gems via +Routing.register+.
+    #
+    @registry = {}
+
+    class << self
+      # Registers a routing strategy class for a socket type.
+      # Called by omq-draft (and other plugins) at require time.
+      #
+      # @param socket_type [Symbol] e.g. :RADIO, :CLIENT
+      # @param strategy_class [Class]
+      #
+      def register(socket_type, strategy_class)
+        @registry[socket_type] = strategy_class
+      end
+    end
+
     # Builds a send or recv queue based on the mute strategy.
     #
     # @param hwm [Integer] high water mark
@@ -69,17 +86,10 @@ module OMQ
       when :SUB    then Sub
       when :XPUB   then XPub
       when :XSUB   then XSub
-      when :PUSH    then Push
-      when :PULL    then Pull
-      when :CLIENT  then Client
-      when :SERVER  then Server
-      when :RADIO   then Radio
-      when :DISH    then Dish
-      when :SCATTER then Scatter
-      when :GATHER  then Gather
-      when :PEER    then Peer
-      when :CHANNEL then Channel
-      else raise ArgumentError, "unknown socket type: #{socket_type}"
+      when :PUSH   then Push
+      when :PULL   then Pull
+      else
+        @registry[socket_type] or raise ArgumentError, "unknown socket type: #{socket_type.inspect}"
       end
     end
   end

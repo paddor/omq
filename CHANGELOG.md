@@ -73,6 +73,19 @@
 
 ### Removed
 
+- **Draft socket types extracted** — `RADIO`, `DISH`, `CLIENT`, `SERVER`,
+  `SCATTER`, `GATHER`, `CHANNEL`, and `PEER` are no longer bundled with `omq`.
+  Use the [omq-draft](https://github.com/paddor/omq-draft) gem and require
+  the relevant entry point (`omq/draft/radiodish`, `omq/draft/clientserver`,
+  etc.).
+- **UDP transport extracted** — `udp://` endpoints are provided by
+  `omq-draft` (via `require "omq/draft/radiodish"`). No longer registered by
+  default.
+- **`Routing.for` plugin registry** — draft socket type removal added
+  `Routing.register(socket_type, strategy_class)` for external gems to
+  register routing strategies. Unknown types fall through the built-in
+  `case` to this registry before raising `ArgumentError`.
+
 - **TLS transport** — extracted to the
   [omq-transport-tls](https://github.com/paddor/omq-transport-tls) gem.
   (Experimental) `require "omq/transport/tls"` to restore `tls+tcp://` support.

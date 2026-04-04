@@ -162,6 +162,8 @@ All sockets are thread-safe. Default HWM is 1000 messages per socket. Default `m
 
 #### Draft (single-frame only)
 
+These require the `omq-draft` gem.
+
 | Pattern | Send | Receive | When HWM full |
 |---------|------|---------|---------------|
 | **CLIENT** / **SERVER** | Round-robin / routing-ID | Fair-queue | Block |
