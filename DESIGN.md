@@ -117,7 +117,7 @@ still receive queued messages. `linger=0` closes immediately.
 
 **Reconnect.** Failed or lost connections are retried with configurable
 interval (default 100ms). Supports exponential backoff via a Range
-(e.g., `0.1..5.0`). Suppressed during close (`@closing` flag).
+(e.g., `0.1..5.0`). Suppressed once `@state` moves to `:closing`.
 
 ## Send pump batching
 

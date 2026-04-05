@@ -14,7 +14,7 @@ module OMQ
       #
       def initialize(engine)
         @engine          = engine
-        @connections     = []
+        @connections     = Set.new
         @recv_queue      = FairQueue.new
         @conn_queues     = {}  # connection => per-connection send queue
         @conn_send_tasks = {}  # connection => send pump task

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Changed
+
+- **`Engine` internals: `ConnectionRecord` + lifecycle state** — three parallel
+  per-connection ivars (`@connections` Array, `@connection_endpoints`,
+  `@connection_promises`) replaced by a single `@connections` Hash keyed by
+  connection, with values `ConnectionRecord = Data.define(:endpoint, :done)`.
+  `@connected_endpoints` renamed to `@dialed` (`Set`). `@closed`/`@closing`
+  booleans replaced by a `@state` symbol (`:open`/`:closing`/`:closed`).
+  Net: −4 instance variables.
+- **`@connections` in `FanOut`, `Sub`, `XSub` routing strategies changed from
+  `Array` to `Set`** — O(1) `#delete` on peer disconnect; semantics already
+  required uniqueness.
+
 ### Fixed
 
 - **FanOut send queues no longer drop messages** — per-connection send queues in

@@ -38,9 +38,7 @@ module OMQ
       end
 
       def self.register(conn, engine, endpoint, done)
-        engine.connections << conn
-        engine.connection_endpoints[conn] = endpoint if endpoint
-        engine.connection_promises[conn]  = done if done
+        engine.connections[conn] = Engine::ConnectionRecord.new(endpoint: endpoint, done: done)
         engine.routing.connection_added(conn)
         engine.peer_connected.resolve(conn)
       end

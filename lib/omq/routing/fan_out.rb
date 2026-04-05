@@ -29,7 +29,7 @@ module OMQ
       private
 
       def init_fan_out(engine)
-        @connections        = []
+        @connections        = Set.new
         @subscriptions      = {} # connection => Set of prefixes
         @conn_queues        = {} # connection => per-connection send queue
         @conn_send_tasks    = {} # connection => send pump task

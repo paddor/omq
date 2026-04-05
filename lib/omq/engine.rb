@@ -23,6 +23,12 @@ module OMQ
       attr_reader :transports
     end
 
+    # Per-connection metadata: the endpoint it was established on and an
+    # optional Promise resolved when the connection is lost (used by
+    # {#spawn_connection} to await connection teardown).
+    #
+    ConnectionRecord = Data.define(:endpoint, :done)
+
 
     # @return [Symbol] socket type (e.g. :REQ, :PAIR)
     #
@@ -53,35 +59,31 @@ module OMQ
     # @param options [Options]
     #
     def initialize(socket_type, options)
-      @socket_type          = socket_type
-      @options              = options
-      @routing              = Routing.for(socket_type).new(self)
-      @connections          = []
-      @connection_endpoints = {} # connection => endpoint (for reconnection)
-      @connected_endpoints  = [] # endpoints we connected to (not bound)
-      @listeners            = []
-      @tasks                = []
-      @closed               = false
-      @closing              = false
-      @last_endpoint        = nil
-      @last_tcp_port        = nil
-      @peer_connected       = Async::Promise.new
-      @all_peers_gone       = Async::Promise.new
-      @reconnect_enabled    = true
-      @parent_task          = nil
-      @on_io_thread         = false
-      @connection_promises  = {} # connection => Async::Promise
-      @fatal_error          = nil
-      @monitor_queue        = nil
+      @socket_type       = socket_type
+      @options           = options
+      @routing           = Routing.for(socket_type).new(self)
+      @connections       = {} # connection => ConnectionRecord
+      @dialed            = Set.new # endpoints we called connect() on (reconnect intent)
+      @listeners         = []
+      @tasks             = []
+      @state             = :open
+      @last_endpoint     = nil
+      @last_tcp_port     = nil
+      @peer_connected    = Async::Promise.new
+      @all_peers_gone    = Async::Promise.new
+      @reconnect_enabled = true
+      @parent_task       = nil
+      @on_io_thread      = false
+      @fatal_error       = nil
+      @monitor_queue     = nil
     end
 
 
-    attr_reader :peer_connected, :all_peers_gone, :connections, :parent_task,
-                :connection_endpoints, :connection_promises, :tasks
+    attr_reader :peer_connected, :all_peers_gone, :connections, :parent_task, :tasks
 
     attr_writer :reconnect_enabled, :monitor_queue
 
-    def closed? = @closed
+    def closed? = @state == :closed
 
     # Optional proc that wraps new connections (e.g. for serialization).
     # Called with the raw connection; must return the (possibly wrapped) connection.
@@ -133,7 +135,7 @@ module OMQ
     def connect(endpoint)
       freeze_error_lists!
       validate_endpoint!(endpoint)
-      @connected_endpoints << endpoint
+      @dialed.add(endpoint)
       if endpoint.start_with?("inproc://")
         # Inproc connect is synchronous and instant
         transport = transport_for(endpoint)
@@ -153,7 +155,7 @@ module OMQ
     # @return [void]
     #
     def disconnect(endpoint)
-      @connected_endpoints.delete(endpoint)
+      @dialed.delete(endpoint)
       close_connections_at(endpoint)
     end
 
@@ -204,8 +206,7 @@ module OMQ
     #
     def connection_ready(pipe, endpoint: nil)
       pipe = @connection_wrapper.call(pipe) if @connection_wrapper
-      @connections << pipe
-      @connection_endpoints[pipe] = endpoint if endpoint
+      @connections[pipe] = ConnectionRecord.new(endpoint: endpoint, done: nil)
       @routing.connection_added(pipe)
       @peer_connected.resolve(pipe)
       emit_monitor_event(:handshake_succeeded, endpoint: endpoint)
@@ -286,14 +287,13 @@ module OMQ
     # @return [void]
     #
     def connection_lost(connection)
-      endpoint = @connection_endpoints.delete(connection)
-      @connections.delete(connection)
+      entry = @connections.delete(connection)
       @routing.connection_removed(connection)
       connection.close
-      emit_monitor_event(:disconnected, endpoint: endpoint)
-      @connection_promises.delete(connection)&.resolve(true)
+      emit_monitor_event(:disconnected, endpoint: entry&.endpoint)
+      entry&.done&.resolve(true)
       @all_peers_gone.resolve(true) if @peer_connected.resolved? && @connections.empty?
-      maybe_reconnect(endpoint)
+      maybe_reconnect(entry&.endpoint)
     end
 
 
@@ -302,11 +302,11 @@ module OMQ
     # @return [void]
     #
     def close
-      return if @closed || @closing
-      @closing = true
+      return unless @state == :open
+      @state = :closing
       stop_listeners unless @connections.empty?
       drain_send_queues(@options.linger) if @options.linger.nil? || @options.linger > 0
-      @closed = true
+      @state = :closed
       Reactor.untrack_linger(@options.linger) if @on_io_thread
       stop_listeners
       close_connections
@@ -346,7 +346,7 @@ module OMQ
     # @param error [Exception]
     #
     def signal_fatal_error(error)
-      return if @closing || @closed
+      return unless @state == :open
       @fatal_error = begin
         raise OMQ::SocketDeadError, "internal error killed #{@socket_type} socket"
       rescue => wrapped
@@ -411,8 +411,8 @@ module OMQ
     end
 
     def maybe_reconnect(endpoint)
-      return unless endpoint && @connected_endpoints.include?(endpoint)
-      return if @closed || @closing || !@reconnect_enabled
+      return unless endpoint && @dialed.include?(endpoint)
+      return unless @state == :open && @reconnect_enabled
       Reconnect.schedule(endpoint, @options, @parent_task, self)
     end
 
@@ -438,14 +438,13 @@ module OMQ
     end
 
     def close_connections
-      @connections.each(&:close)
+      @connections.each_key(&:close)
       @connections.clear
     end
 
     def close_connections_at(endpoint)
-      conns = @connection_endpoints.select { |_, ep| ep == endpoint }.keys
+      conns = @connections.filter_map { |conn, e| conn if e.endpoint == endpoint }
       conns.each do |conn|
-        @connection_endpoints.delete(conn)
         @connections.delete(conn)
         @routing.connection_removed(conn)
         conn.close

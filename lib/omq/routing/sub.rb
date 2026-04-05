@@ -12,7 +12,7 @@ module OMQ
       #
       def initialize(engine)
         @engine        = engine
-        @connections   = []
+        @connections   = Set.new
         @recv_queue    = FairQueue.new
         @subscriptions = Set.new
         @tasks         = []

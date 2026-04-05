@@ -28,7 +28,7 @@ describe "inproc memory leaks" do
       pull.receive
 
       # Track one of the pipes
-      pipe = push.instance_variable_get(:@engine).connections.first
+      pipe = push.instance_variable_get(:@engine).connections.keys.first
       weak = WeakRef.new(pipe)
       pipe = nil
 
