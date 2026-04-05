@@ -5,7 +5,8 @@ module OMQ
     # PUB socket routing: fan-out to all subscribers.
     #
     # Listens for SUBSCRIBE/CANCEL commands from peers.
-    # Drops messages if a subscriber's connection write fails.
+    # Each subscriber gets its own bounded send queue; slow subscribers
+    # are muted via the socket's on_mute strategy (drop by default).
     #
     class Pub
       include FanOut
@@ -17,10 +18,6 @@ module OMQ
         @tasks  = []
         init_fan_out(engine)
       end
-
-      # @return [Async::LimitedQueue]
-      #
-      attr_reader :send_queue
 
       # PUB is write-only.
       #
@@ -34,7 +31,7 @@ module OMQ
         @connections << connection
         @subscriptions[connection] = Set.new
         start_subscription_listener(connection)
-        start_send_pump unless @send_pump_started
+        add_fan_out_send_connection(connection)
       end
 
       # @param connection [Connection]
@@ -42,12 +39,13 @@ module OMQ
       def connection_removed(connection)
         @connections.delete(connection)
         @subscriptions.delete(connection)
+        remove_fan_out_send_connection(connection)
       end
 
       # @param parts [Array<String>]
       #
       def enqueue(parts)
-        @send_queue.enqueue(parts)
+        fan_out_enqueue(parts)
       end
 
       #

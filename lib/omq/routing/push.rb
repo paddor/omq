@@ -16,11 +16,6 @@ module OMQ
       end
 
 
-      # @return [Async::LimitedQueue]
-      #
-      attr_reader :send_queue
-
-
       # PUSH is write-only.
       #
       def recv_queue
@@ -32,9 +27,7 @@ module OMQ
       #
       def connection_added(connection)
         @connections << connection
-        signal_connection_available
-        update_direct_pipe
-        start_send_pump unless @send_pump_started
+        add_round_robin_send_connection(connection)
         start_reaper(connection)
       end
 
@@ -43,7 +36,7 @@ module OMQ
       #
       def connection_removed(connection)
         @connections.delete(connection)
-        update_direct_pipe
+        remove_round_robin_send_connection(connection)
       end
 
 
@@ -54,7 +47,7 @@ module OMQ
       end
 
 
-      # Stops all background tasks (send pump, reapers).
+      # Stops all background tasks (send pumps, reapers).
       #
       def stop
         @tasks.each(&:stop)
@@ -76,8 +69,6 @@ module OMQ
           @engine.connection_lost(conn)
         end
       end
-
-
     end
   end
 end

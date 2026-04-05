@@ -13,31 +13,33 @@ module OMQ
       #
       def initialize(engine)
         @engine     = engine
-        @recv_queue = Routing.build_queue(engine.options.recv_hwm, :block)
+        @recv_queue = FairQueue.new
         @tasks      = []
         init_round_robin(engine)
       end
 
-      # @return [Async::LimitedQueue]
+      # @return [FairQueue]
       #
-      attr_reader :recv_queue, :send_queue
+      attr_reader :recv_queue
 
       # @param connection [Connection]
       #
       def connection_added(connection)
         @connections << connection
-        signal_connection_available
-        update_direct_pipe
-        task = @engine.start_recv_pump(connection, @recv_queue)
+        conn_q    = Routing.build_queue(@engine.options.recv_hwm, :block)
+        signaling = SignalingQueue.new(conn_q, @recv_queue)
+        @recv_queue.add_queue(connection, conn_q)
+        task = @engine.start_recv_pump(connection, signaling)
         @tasks << task if task
-        start_send_pump unless @send_pump_started
+        add_round_robin_send_connection(connection)
       end
 
       # @param connection [Connection]
       #
       def connection_removed(connection)
         @connections.delete(connection)
-        update_direct_pipe
+        @recv_queue.remove_queue(connection)
+        remove_round_robin_send_connection(connection)
       end
 
       # @param parts [Array<String>]
@@ -51,7 +53,6 @@ module OMQ
         @tasks.each(&:stop)
         @tasks.clear
       end
-
     end
   end
 end

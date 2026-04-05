@@ -13,12 +13,12 @@ module OMQ
       def initialize(engine)
         @engine        = engine
         @connections   = []
-        @recv_queue    = Routing.build_queue(engine.options.recv_hwm, engine.options.on_mute)
+        @recv_queue    = FairQueue.new
         @subscriptions = Set.new
         @tasks         = []
       end
 
-      # @return [Async::LimitedQueue]
+      # @return [FairQueue]
       #
       attr_reader :recv_queue
 
@@ -29,7 +29,10 @@ module OMQ
         @subscriptions.each do |prefix|
           connection.send_command(Protocol::ZMTP::Codec::Command.subscribe(prefix))
         end
-        task = @engine.start_recv_pump(connection, @recv_queue)
+        conn_q    = Routing.build_queue(@engine.options.recv_hwm, @engine.options.on_mute)
+        signaling = SignalingQueue.new(conn_q, @recv_queue)
+        @recv_queue.add_queue(connection, conn_q)
+        task = @engine.start_recv_pump(connection, signaling)
         @tasks << task if task
       end
 
@@ -37,6 +40,7 @@ module OMQ
       #
       def connection_removed(connection)
         @connections.delete(connection)
+        @recv_queue.remove_queue(connection)
       end
 
       # SUB is read-only.
@@ -71,7 +75,6 @@ module OMQ
         @tasks.each(&:stop)
         @tasks.clear
       end
-
     end
   end
 end

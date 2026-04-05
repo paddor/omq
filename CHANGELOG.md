@@ -4,6 +4,24 @@
 
 ### Added
 
+- **Per-peer HWM** — send and receive high-water marks now apply per connected
+  peer (RFC 28/29/30). Each peer gets its own bounded send queue and its own
+  bounded recv queue. A slow or muted peer no longer steals capacity from
+  other peers. `FairQueue` + `SignalingQueue` aggregate per-connection recv
+  queues with fair round-robin delivery; `RoundRobin` and `FanOut` mixins
+  maintain per-connection send queues with dedicated send pump fibers.
+  `PUSH`/`DEALER`/`PAIR` buffer messages in a staging queue when no peers are
+  connected yet, draining into the first peer's queue on connect.
+- **`FairQueue`** — new aggregator class (`lib/omq/routing/fair_queue.rb`)
+  that fair-queues across per-connection bounded queues. Pending messages from
+  a disconnected peer are drained before the queue is discarded.
+- **`Socket.bind` / `Socket.connect` class-method fix** — now pass the
+  endpoint via `@`/`>` prefix into the constructor so any post-attach
+  initialization in subclasses (e.g. XSUB's `subscribe:` kwarg) runs after
+  the connection is established.
+
+
+
 - **QoS infrastructure** — `Options#qos` attribute (default 0) and inproc
   command queue support for QoS-enabled connections. The
   [omq-qos](https://github.com/paddor/omq-qos) gem activates delivery

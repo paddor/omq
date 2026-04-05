@@ -8,6 +8,9 @@ module OMQ
     # the application as data frames: \x01 + prefix for subscribe,
     # \x00 + prefix for unsubscribe.
     #
+    # The recv_queue is a simple bounded queue (not a FairQueue) because
+    # messages come from subscription commands, not from peer data pumps.
+    #
     class XPub
       include FanOut
 
@@ -22,7 +25,7 @@ module OMQ
 
       # @return [Async::LimitedQueue]
       #
-      attr_reader :recv_queue, :send_queue
+      attr_reader :recv_queue
 
       # @param connection [Connection]
       #
@@ -30,7 +33,7 @@ module OMQ
         @connections << connection
         @subscriptions[connection] = Set.new
         start_subscription_listener(connection)
-        start_send_pump unless @send_pump_started
+        add_fan_out_send_connection(connection)
       end
 
       # @param connection [Connection]
@@ -38,12 +41,13 @@ module OMQ
       def connection_removed(connection)
         @connections.delete(connection)
         @subscriptions.delete(connection)
+        remove_fan_out_send_connection(connection)
       end
 
       # @param parts [Array<String>]
       #
       def enqueue(parts)
-        @send_queue.enqueue(parts)
+        fan_out_enqueue(parts)
       end
 
       #

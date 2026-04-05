@@ -47,7 +47,7 @@ module OMQ
     # @return [Socket]
     #
     def self.bind(endpoint, **opts)
-      new(nil, **opts).tap { |s| s.bind(endpoint) }
+      new("@#{endpoint}", **opts)
     end
 
 
@@ -58,7 +58,7 @@ module OMQ
     # @return [Socket]
     #
     def self.connect(endpoint, **opts)
-      new(nil, **opts).tap { |s| s.connect(endpoint) }
+      new(">#{endpoint}", **opts)
     end
 
 

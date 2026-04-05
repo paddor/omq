@@ -9,24 +9,28 @@ module OMQ
       #
       def initialize(engine)
         @engine     = engine
-        @recv_queue = Routing.build_queue(engine.options.recv_hwm, :block)
+        @recv_queue = FairQueue.new
         @tasks      = []
       end
 
-      # @return [Async::LimitedQueue]
+      # @return [FairQueue]
       #
       attr_reader :recv_queue
 
       # @param connection [Connection]
       #
       def connection_added(connection)
-        task = @engine.start_recv_pump(connection, @recv_queue)
+        conn_q    = Routing.build_queue(@engine.options.recv_hwm, :block)
+        signaling = SignalingQueue.new(conn_q, @recv_queue)
+        @recv_queue.add_queue(connection, conn_q)
+        task = @engine.start_recv_pump(connection, signaling)
         @tasks << task if task
       end
 
       # @param connection [Connection]
       #
       def connection_removed(connection)
+        @recv_queue.remove_queue(connection)
         # recv pump stops on EOFError
       end
 

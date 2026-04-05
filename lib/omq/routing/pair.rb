@@ -4,25 +4,27 @@ module OMQ
   module Routing
     # PAIR socket routing: exclusive 1-to-1 bidirectional.
     #
-    # Only one peer connection is allowed. Messages flow through
-    # internal send/recv queues backed by Async::LimitedQueue.
+    # Only one peer connection is allowed. Send and recv queues are
+    # created per-connection (and destroyed on disconnection) so
+    # HWM is consistent with multi-peer socket types.
     #
     class Pair
 
       # @param engine [Engine]
       #
       def initialize(engine)
-        @engine     = engine
-        @connection = nil
-        @recv_queue = Routing.build_queue(engine.options.recv_hwm, :block)
-        @send_queue = Routing.build_queue(engine.options.send_hwm, :block)
+        @engine         = engine
+        @connection     = nil
+        @recv_queue     = FairQueue.new
+        @send_queue     = nil   # created per-connection
+        @staging_queue  = Routing.build_queue(@engine.options.send_hwm, :block)
+        @send_pump      = nil
         @tasks          = []
-        @send_pump_idle = true
       end
 
-      # @return [Async::LimitedQueue]
+      # @return [FairQueue]
       #
-      attr_reader :recv_queue, :send_queue
+      attr_reader :recv_queue
 
       # @param connection [Connection]
       # @raise [RuntimeError] if a connection already exists
@@ -30,9 +32,20 @@ module OMQ
       def connection_added(connection)
         raise "PAIR allows only one peer" if @connection
         @connection = connection
-        task = @engine.start_recv_pump(connection, @recv_queue)
+
+        conn_q    = Routing.build_queue(@engine.options.recv_hwm, :block)
+        signaling = SignalingQueue.new(conn_q, @recv_queue)
+        @recv_queue.add_queue(connection, conn_q)
+        task = @engine.start_recv_pump(connection, signaling)
         @tasks << task if task
-        start_send_pump(connection) unless connection.is_a?(Transport::Inproc::DirectPipe)
+
+        unless connection.is_a?(Transport::Inproc::DirectPipe)
+          @send_queue = Routing.build_queue(@engine.options.send_hwm, :block)
+          while (msg = @staging_queue.dequeue(timeout: 0))
+            @send_queue.enqueue(msg)
+          end
+          start_send_pump(connection)
+        end
       end
 
       # @param connection [Connection]
@@ -40,6 +53,8 @@ module OMQ
       def connection_removed(connection)
         if @connection == connection
           @connection = nil
+          @recv_queue.remove_queue(connection)
+          @send_queue = nil
           @send_pump&.stop
           @send_pump = nil
         end
@@ -51,8 +66,10 @@ module OMQ
         conn = @connection
         if conn.is_a?(Transport::Inproc::DirectPipe) && conn.direct_recv_queue
           conn.send_message(parts)
-        else
+        elsif @send_queue
           @send_queue.enqueue(parts)
+        else
+          @staging_queue.enqueue(parts)
         end
       end
 
@@ -62,22 +79,27 @@ module OMQ
         @tasks.clear
       end
 
-      def send_pump_idle? = @send_pump_idle
+      # True when the staging and send queues are empty.
+      #
+      def send_queues_drained?
+        @staging_queue.empty? && (@send_queue.nil? || @send_queue.empty?)
+      end
 
       private
 
       def start_send_pump(conn)
         @send_pump = @engine.spawn_pump_task(annotation: "send pump") do
           loop do
-            @send_pump_idle = true
             batch = [@send_queue.dequeue]
-            @send_pump_idle = false
             Routing.drain_send_queue(@send_queue, batch)
-            batch.each { |parts| conn.write_message(parts) }
-            conn.flush
+            begin
+              batch.each { |parts| conn.write_message(parts) }
+              conn.flush
+            rescue Protocol::ZMTP::Error, *CONNECTION_LOST
+              @engine.connection_lost(conn)
+              break
+            end
           end
-        rescue *CONNECTION_LOST
-          @engine.connection_lost(conn)
         end
         @tasks << @send_pump
       end

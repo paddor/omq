@@ -9,29 +9,30 @@ module OMQ
     # on send.
     #
     class Rep
-      # @param engine [Engine]
-      #
       EMPTY_FRAME = "".b.freeze
 
+      # @param engine [Engine]
+      #
       def initialize(engine)
-        @engine            = engine
-        @recv_queue        = Routing.build_queue(engine.options.recv_hwm, :block)
-        @send_queue        = Routing.build_queue(engine.options.send_hwm, :block)
-        @pending_replies   = []
-        @tasks             = []
-        @send_pump_started = false
-        @send_pump_idle    = true
-        @written           = Set.new
+        @engine          = engine
+        @recv_queue      = FairQueue.new
+        @pending_replies = []
+        @conn_queues     = {}  # connection => per-connection send queue
+        @conn_send_tasks = {}  # connection => send pump task
+        @tasks           = []
       end
 
-      # @return [Async::LimitedQueue]
+      # @return [FairQueue]
       #
-      attr_reader :recv_queue, :send_queue
+      attr_reader :recv_queue
 
       # @param connection [Connection]
       #
       def connection_added(connection)
-        task = @engine.start_recv_pump(connection, @recv_queue) do |msg|
+        conn_q    = Routing.build_queue(@engine.options.recv_hwm, :block)
+        signaling = SignalingQueue.new(conn_q, @recv_queue)
+        @recv_queue.add_queue(connection, conn_q)
+        task = @engine.start_recv_pump(connection, signaling) do |msg|
           delimiter = msg.index(&:empty?) || msg.size
           envelope  = msg[0, delimiter]
           body      = msg[(delimiter + 1)..] || []
@@ -39,22 +40,31 @@ module OMQ
           body
         end
         @tasks << task if task
-        start_send_pump unless @send_pump_started
+
+        q = Routing.build_queue(@engine.options.send_hwm, :block)
+        @conn_queues[connection] = q
+        start_conn_send_pump(connection, q)
       end
 
       # @param connection [Connection]
       #
       def connection_removed(connection)
-        # Remove any pending replies for this connection
         @pending_replies.reject! { |r| r[:conn] == connection }
+        @recv_queue.remove_queue(connection)
+        @conn_queues.delete(connection)
+        @conn_send_tasks.delete(connection)&.stop
       end
 
-      # Enqueues a reply for sending.
+      # Enqueues a reply. Routes to the connection that sent the matching
+      # request by consuming the next pending_reply entry.
       #
       # @param parts [Array<String>]
       #
       def enqueue(parts)
-        @send_queue.enqueue(parts)
+        reply_info = @pending_replies.shift
+        return unless reply_info
+        conn = reply_info[:conn]
+        @conn_queues[conn]&.enqueue([*reply_info[:envelope], EMPTY_FRAME, *parts])
       end
 
       def stop
@@ -62,39 +72,30 @@ module OMQ
         @tasks.clear
       end
 
-      def send_pump_idle? = @send_pump_idle
+      # True when all per-connection send queues are empty.
+      #
+      def send_queues_drained?
+        @conn_queues.values.all?(&:empty?)
+      end
 
       private
 
-      def start_send_pump
-        @send_pump_started = true
-        @tasks << @engine.spawn_pump_task(annotation: "send pump") do
+      def start_conn_send_pump(conn, q)
+        task = @engine.spawn_pump_task(annotation: "send pump") do
           loop do
-            @send_pump_idle = true
-            batch = [@send_queue.dequeue]
-            @send_pump_idle = false
-            Routing.drain_send_queue(@send_queue, batch)
-
-            @written.clear
-            batch.each do |parts|
-              reply_info = @pending_replies.shift
-              next unless reply_info
-              conn = reply_info[:conn]
-              begin
-                conn.write_message([*reply_info[:envelope], EMPTY_FRAME, *parts])
-                @written << conn
-              rescue *CONNECTION_LOST
-                # connection lost mid-write
-              end
-            end
-
-            @written.each do |conn|
+            batch = [q.dequeue]
+            Routing.drain_send_queue(q, batch)
+            begin
+              batch.each { |parts| conn.write_message(parts) }
               conn.flush
-            rescue *CONNECTION_LOST
-              # connection lost mid-flush
+            rescue Protocol::ZMTP::Error, *CONNECTION_LOST
+              @engine.connection_lost(conn)
+              break
             end
           end
         end
+        @conn_send_tasks[conn] = task
+        @tasks << task
       end
     end
   end

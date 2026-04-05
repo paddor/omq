@@ -457,7 +457,7 @@ module OMQ
       rescue => wrapped
         wrapped
       end
-      @routing.recv_queue.enqueue(nil) rescue nil
+      @routing.recv_queue.push(nil) rescue nil
       @peer_connected.resolve(nil) rescue nil
     end
 
@@ -501,15 +501,15 @@ module OMQ
     end
 
 
-    # Waits for the send queue to drain.
+    # Waits for all per-connection send queues to drain.
     #
     # @param timeout [Numeric, nil] max seconds to wait (nil = forever)
     #
     def drain_send_queues(timeout)
-      return unless @routing.respond_to?(:send_queue)
+      return unless @routing.respond_to?(:send_queues_drained?)
       deadline = timeout ? Async::Clock.now + timeout : nil
 
-      until @routing.send_queue.empty? && @routing.send_pump_idle?
+      until @routing.send_queues_drained?
         if deadline
           remaining = deadline - Async::Clock.now
           break if remaining <= 0

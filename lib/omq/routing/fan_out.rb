@@ -5,7 +5,13 @@ module OMQ
     # Mixin for routing strategies that fan-out to subscribers.
     #
     # Manages per-connection subscription sets, subscription command
-    # listeners, and a send pump that delivers to all matching peers.
+    # listeners, and per-connection send queues/pumps that deliver
+    # to each matching peer independently.
+    #
+    # HWM is enforced per subscriber: each connection gets its own
+    # bounded send queue. DropQueues (for :drop_newest/:drop_oldest)
+    # silently drop messages for a slow subscriber without affecting
+    # others. LimitedQueues (for :block) block the publisher.
     #
     # Including classes must call `init_fan_out(engine)` from
     # their #initialize.
@@ -13,23 +19,26 @@ module OMQ
     module FanOut
       attr_reader :subscriber_joined
 
-      # @return [Boolean] true when the send pump is idle (not sending a batch)
-      def send_pump_idle? = @send_pump_idle
+      # True when all per-connection send queues are empty.
+      # Used by Engine#drain_send_queues during linger.
+      #
+      def send_queues_drained?
+        @conn_queues.values.all?(&:empty?)
+      end
 
       private
 
       def init_fan_out(engine)
         @connections        = []
         @subscriptions      = {} # connection => Set of prefixes
-        @send_queue         = Routing.build_queue(engine.options.send_hwm, :block)
+        @conn_queues        = {} # connection => per-connection send queue
+        @conn_send_tasks    = {} # connection => send pump task
         @on_mute            = engine.options.on_mute
-        @send_pump_started  = false
-        @send_pump_idle     = true
         @conflate           = engine.options.conflate
         @subscriber_joined  = Async::Promise.new
-        @written            = Set.new
         @latest             = {} if @conflate
       end
+
 
       # @return [Boolean] whether the connection is subscribed to the topic
       #
@@ -61,76 +70,47 @@ module OMQ
         @subscriptions[conn]&.delete(prefix)
       end
 
-      # Returns true if the connection is muted (recv queue full) and
-      # the on_mute strategy says to drop rather than block.
+
+      # Creates a per-connection send queue and starts its send pump.
+      # Call from #connection_added.
       #
-      def muted?(conn)
-        return false if @on_mute == :block
-        q = conn.direct_recv_queue if conn.respond_to?(:direct_recv_queue)
-        q&.respond_to?(:limited?) && q.limited?
+      # @param conn [Connection]
+      #
+      def add_fan_out_send_connection(conn)
+        q = Routing.build_queue(@engine.options.send_hwm, @on_mute)
+        @conn_queues[conn] = q
+        start_conn_send_pump(conn, q)
       end
 
 
-      def start_send_pump
-        @send_pump_started = true
-        @tasks << @engine.spawn_pump_task(annotation: "send pump") do
-          loop do
-            @send_pump_idle = true
-            batch = [@send_queue.dequeue]
-            @send_pump_idle = false
-            Routing.drain_send_queue(@send_queue, batch)
+      # Stops the per-connection send pump and removes the queue.
+      # Call from #connection_removed.
+      #
+      # @param conn [Connection]
+      #
+      def remove_fan_out_send_connection(conn)
+        @conn_queues.delete(conn)
+        @conn_send_tasks.delete(conn)&.stop
+      end
 
-            @written.clear
 
-            if @conflate
-              # Keep only the last matching message per connection.
-              @latest.clear
-              batch.each do |parts|
-                topic = parts.first || EMPTY_BINARY
-                @connections.each do |conn|
-                  next unless subscribed?(conn, topic)
-                  @latest[conn] = parts
-                end
-              end
-              @latest.each do |conn, parts|
-                next if muted?(conn)
-                begin
-                  conn.write_message(parts)
-                  @written << conn
-                rescue *CONNECTION_LOST
-                end
-              end
-            else
-              batch.each do |parts|
-                topic      = parts.first || EMPTY_BINARY
-                wire_bytes = nil
-
-                @connections.each do |conn|
-                  next unless subscribed?(conn, topic)
-                  next if muted?(conn)
-                  begin
-                    if conn.respond_to?(:curve?) && conn.curve?
-                      conn.write_message(parts)
-                    elsif conn.respond_to?(:write_wire)
-                      wire_bytes ||= Protocol::ZMTP::Codec::Frame.encode_message(parts)
-                      conn.write_wire(wire_bytes)
-                    else
-                      conn.write_message(parts)
-                    end
-                    @written << conn
-                  rescue *CONNECTION_LOST
-                  end
-                end
-              end
-            end
-
-            @written.each do |conn|
-              conn.flush
-            rescue *CONNECTION_LOST
-            end
-          end
+      # Fans a message out to every connected peer's send queue.
+      # Subscription filtering happens in the per-connection send pump so
+      # that late-arriving subscriptions (e.g. inproc connect-before-subscribe)
+      # are respected: a message enqueued before the async subscription listener
+      # has processed SUBSCRIBE commands will still be delivered correctly.
+      #
+      # DropQueues silently discard messages for slow subscribers;
+      # LimitedQueues block the publisher until the subscriber catches up.
+      #
+      # @param parts [Array<String>]
+      #
+      def fan_out_enqueue(parts)
+        @connections.each do |conn|
+          @conn_queues[conn]&.enqueue(parts)
         end
       end
+
 
       def start_subscription_listener(conn)
         @tasks << @engine.spawn_pump_task(annotation: "subscription listener") do
@@ -145,6 +125,71 @@ module OMQ
           end
         rescue *CONNECTION_LOST
           @engine.connection_lost(conn)
+        end
+      end
+
+
+      # Starts a dedicated send pump for one subscriber connection.
+      # Uses write_wire (pre-encoded bytes) for non-CURVE TCP connections
+      # to avoid re-encoding the same message N times during fan-out.
+      # In conflate mode, drains the batch and keeps only the latest
+      # message per topic before writing.
+      #
+      # @param conn [Connection]
+      # @param q [Async::LimitedQueue, DropQueue]
+      #
+      def start_conn_send_pump(conn, q)
+        use_wire = conn.respond_to?(:write_wire) && !(conn.respond_to?(:curve?) && conn.curve?)
+
+        task = if @conflate
+          start_conn_send_pump_conflate(conn, q)
+        else
+          @engine.spawn_pump_task(annotation: "send pump") do
+            loop do
+              batch = [q.dequeue]
+              Routing.drain_send_queue(q, batch)
+              begin
+                sent = false
+                batch.each do |parts|
+                  topic = parts.first || EMPTY_BINARY
+                  next unless subscribed?(conn, topic)
+                  if use_wire
+                    wire_bytes = Protocol::ZMTP::Codec::Frame.encode_message(parts)
+                    conn.write_wire(wire_bytes)
+                  else
+                    conn.write_message(parts)
+                  end
+                  sent = true
+                end
+                conn.flush if sent
+              rescue Protocol::ZMTP::Error, *CONNECTION_LOST
+                @engine.connection_lost(conn)
+                break
+              end
+            end
+          end
+        end
+        @conn_send_tasks[conn] = task
+        @tasks << task
+      end
+
+
+      def start_conn_send_pump_conflate(conn, q)
+        @engine.spawn_pump_task(annotation: "send pump") do
+          loop do
+            batch = [q.dequeue]
+            Routing.drain_send_queue(q, batch)
+            # Keep only the latest message that matches the subscription.
+            latest = batch.reverse.find { |parts| subscribed?(conn, parts.first || EMPTY_BINARY) }
+            next unless latest
+            begin
+              conn.write_message(latest)
+              conn.flush
+            rescue Protocol::ZMTP::Error, *CONNECTION_LOST
+              @engine.connection_lost(conn)
+              break
+            end
+          end
         end
       end
     end

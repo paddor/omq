@@ -5,45 +5,57 @@ module OMQ
     # XSUB socket routing: like SUB but subscriptions sent as data messages.
     #
     # Subscriptions are sent as data frames: \x01 + prefix for subscribe,
-    # \x00 + prefix for unsubscribe.
+    # \x00 + prefix for unsubscribe. Each connected PUB gets its own send
+    # queue so subscription commands are delivered independently per peer.
     #
     class XSub
 
       # @param engine [Engine]
       #
       def initialize(engine)
-        @engine            = engine
-        @connections       = []
-        @recv_queue        = Routing.build_queue(engine.options.recv_hwm, engine.options.on_mute)
-        @send_queue        = Routing.build_queue(engine.options.send_hwm, :block)
-        @tasks             = []
-        @send_pump_started = false
-        @send_pump_idle    = true
+        @engine          = engine
+        @connections     = []
+        @recv_queue      = FairQueue.new
+        @conn_queues     = {}  # connection => per-connection send queue
+        @conn_send_tasks = {}  # connection => send pump task
+        @tasks           = []
       end
 
-      # @return [Async::LimitedQueue]
+      # @return [FairQueue]
       #
-      attr_reader :recv_queue, :send_queue
+      attr_reader :recv_queue
 
       # @param connection [Connection]
       #
       def connection_added(connection)
         @connections << connection
-        task = @engine.start_recv_pump(connection, @recv_queue)
+
+        conn_q    = Routing.build_queue(@engine.options.recv_hwm, @engine.options.on_mute)
+        signaling = SignalingQueue.new(conn_q, @recv_queue)
+        @recv_queue.add_queue(connection, conn_q)
+        task = @engine.start_recv_pump(connection, signaling)
         @tasks << task if task
-        start_send_pump unless @send_pump_started
+
+        q = Routing.build_queue(@engine.options.send_hwm, :block)
+        @conn_queues[connection] = q
+        start_conn_send_pump(connection, q)
       end
 
       # @param connection [Connection]
       #
       def connection_removed(connection)
         @connections.delete(connection)
+        @recv_queue.remove_queue(connection)
+        @conn_queues.delete(connection)
+        @conn_send_tasks.delete(connection)&.stop
       end
 
+      # Enqueues a subscription command (fan-out to all connected PUBs).
+      #
       # @param parts [Array<String>]
       #
       def enqueue(parts)
-        @send_queue.enqueue(parts)
+        @connections.each { |conn| @conn_queues[conn]&.enqueue(parts) }
       end
 
       #
@@ -52,31 +64,35 @@ module OMQ
         @tasks.clear
       end
 
-      def send_pump_idle? = @send_pump_idle
+      # True when all per-connection send queues are empty.
+      #
+      def send_queues_drained?
+        @conn_queues.values.all?(&:empty?)
+      end
 
       private
 
-      def start_send_pump
-        @send_pump_started = true
-        @tasks << @engine.spawn_pump_task(annotation: "send pump") do
+      def start_conn_send_pump(conn, q)
+        task = @engine.spawn_pump_task(annotation: "send pump") do
           loop do
-            @send_pump_idle = true
-            parts = @send_queue.dequeue
-            @send_pump_idle = false
+            parts = q.dequeue
             frame = parts.first&.b
             next if frame.nil? || frame.empty?
-
             flag   = frame.getbyte(0)
             prefix = frame.byteslice(1..) || "".b
-
-            case flag
-            when 0x01
-              @connections.each { |c| c.send_command(Protocol::ZMTP::Codec::Command.subscribe(prefix)) }
-            when 0x00
-              @connections.each { |c| c.send_command(Protocol::ZMTP::Codec::Command.cancel(prefix)) }
+            begin
+              case flag
+              when 0x01 then conn.send_command(Protocol::ZMTP::Codec::Command.subscribe(prefix))
+              when 0x00 then conn.send_command(Protocol::ZMTP::Codec::Command.cancel(prefix))
+              end
+            rescue Protocol::ZMTP::Error, *CONNECTION_LOST
+              @engine.connection_lost(conn)
+              break
             end
           end
         end
+        @conn_send_tasks[conn] = task
+        @tasks << task
       end
     end
   end
